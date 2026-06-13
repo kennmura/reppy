@@ -1,0 +1,70 @@
+import Link from "next/link";
+import { signOutCoach } from "@/lib/actions";
+import type { MessageAccess } from "@/lib/types";
+
+const links = [
+  { href: "/coach/dashboard", label: "Dashboard" },
+  { href: "/coach/profile", label: "Profile" },
+  { href: "/coach/messages", label: "Messages" },
+  { href: "/coach/players", label: "Players" },
+  { href: "/coach/billing", label: "Billing" },
+  { href: "/coach/referrals", label: "Referrals" },
+];
+
+export function CoachShell({
+  children,
+  unreadCount,
+  access,
+}: {
+  children: React.ReactNode;
+  unreadCount: number;
+  access: MessageAccess;
+}) {
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+          <Link href="/coach/dashboard" className="text-lg font-semibold text-slate-950">
+            Coach Centre
+          </Link>
+          <form action={signOutCoach}>
+            <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500">
+              Sign out
+            </button>
+          </form>
+        </div>
+      </header>
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[220px_1fr] lg:px-8">
+        <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+          <nav className="grid gap-1">
+            {links.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <span>{link.label}</span>
+                {link.label === "Messages" && unreadCount ? (
+                  <span className="rounded-full bg-[#12355b] px-2 py-0.5 text-xs font-semibold text-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
+              </Link>
+            ))}
+          </nav>
+          <div className="mt-4 rounded-md bg-[#f7f8f3] p-3 text-xs leading-5 text-slate-600">
+            <p className="font-semibold text-slate-950">
+              {access.hasAccess ? "Messaging active" : "Message Centre locked"}
+            </p>
+            <p className="mt-1">
+              {access.hasAccess
+                ? "You can view and reply to full training requests."
+                : "Start a trial or upgrade to view complete requests and reply."}
+            </p>
+          </div>
+        </aside>
+        <main>{children}</main>
+      </div>
+    </div>
+  );
+}

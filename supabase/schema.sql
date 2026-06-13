@@ -1,0 +1,477 @@
+create extension if not exists "pgcrypto";
+
+create table if not exists coaches (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  full_name text not null,
+  email text,
+  phone text,
+  sport text,
+  category text,
+  headline text,
+  bio text,
+  location text,
+  service_area text,
+  pricing_text text default 'Pricing available upon request.',
+  profile_photo_url text,
+  banner_image_url text,
+  instagram_url text,
+  video_url text,
+  booking_url text,
+  is_published boolean default false,
+  is_featured boolean default false,
+  subscription_status text default 'manual',
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+create table if not exists coach_services (
+  id uuid primary key default gen_random_uuid(),
+  coach_id uuid references coaches(id) on delete cascade,
+  title text not null,
+  description text,
+  duration text,
+  price text,
+  sort_order integer default 0,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists coach_audiences (
+  id uuid primary key default gen_random_uuid(),
+  coach_id uuid references coaches(id) on delete cascade,
+  label text not null,
+  sort_order integer default 0,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists coach_testimonials (
+  id uuid primary key default gen_random_uuid(),
+  coach_id uuid references coaches(id) on delete cascade,
+  quote text not null,
+  author text,
+  sort_order integer default 0,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists coach_media (
+  id uuid primary key default gen_random_uuid(),
+  coach_id uuid references coaches(id) on delete cascade,
+  media_url text not null,
+  media_type text default 'image',
+  caption text,
+  sort_order integer default 0,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists training_requests (
+  id uuid primary key default gen_random_uuid(),
+  coach_id uuid references coaches(id) on delete set null,
+  coach_slug text,
+  name text not null,
+  email text not null,
+  phone text,
+  player_age text,
+  current_level text,
+  training_goals text not null,
+  preferred_location text,
+  preferred_days_times text,
+  message text,
+  status text default 'new',
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists coach_applications (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  email text not null,
+  phone text,
+  sport text not null,
+  location text not null,
+  coaching_focus text,
+  background text not null,
+  message text,
+  status text default 'new',
+  created_at timestamp with time zone default now()
+);
+
+insert into storage.buckets (id, name, public)
+values ('coach-media', 'coach-media', true)
+on conflict (id) do update set public = excluded.public;
+
+alter table coaches enable row level security;
+alter table coach_services enable row level security;
+alter table coach_audiences enable row level security;
+alter table coach_testimonials enable row level security;
+alter table coach_media enable row level security;
+alter table training_requests enable row level security;
+alter table coach_applications enable row level security;
+
+drop policy if exists "Published coaches are public" on coaches;
+create policy "Published coaches are public"
+on coaches for select
+using (is_published = true);
+
+drop policy if exists "Published coach services are public" on coach_services;
+create policy "Published coach services are public"
+on coach_services for select
+using (exists (select 1 from coaches where coaches.id = coach_services.coach_id and coaches.is_published = true));
+
+drop policy if exists "Published coach audiences are public" on coach_audiences;
+create policy "Published coach audiences are public"
+on coach_audiences for select
+using (exists (select 1 from coaches where coaches.id = coach_audiences.coach_id and coaches.is_published = true));
+
+drop policy if exists "Published coach testimonials are public" on coach_testimonials;
+create policy "Published coach testimonials are public"
+on coach_testimonials for select
+using (exists (select 1 from coaches where coaches.id = coach_testimonials.coach_id and coaches.is_published = true));
+
+drop policy if exists "Published coach media is public" on coach_media;
+create policy "Published coach media is public"
+on coach_media for select
+using (exists (select 1 from coaches where coaches.id = coach_media.coach_id and coaches.is_published = true));
+
+create index if not exists coaches_slug_idx on coaches(slug);
+create index if not exists training_requests_status_idx on training_requests(status);
+create index if not exists training_requests_created_at_idx on training_requests(created_at desc);
+create index if not exists coach_applications_status_idx on coach_applications(status);
+create index if not exists coach_applications_created_at_idx on coach_applications(created_at desc);
+
+drop policy if exists "Coach media is publicly readable" on storage.objects;
+create policy "Coach media is publicly readable"
+on storage.objects for select
+using (bucket_id = 'coach-media');
+
+alter table coaches add column if not exists user_id uuid references auth.users(id) on delete set null;
+alter table coaches add column if not exists accepting_requests boolean default true;
+alter table coaches add column if not exists profile_status text default 'published';
+alter table coaches add column if not exists founding_price_locked boolean default false;
+alter table coaches add column if not exists contact_scan_status text default 'clear';
+alter table coaches add column if not exists admin_premium_access_until timestamp with time zone;
+alter table coaches add column if not exists referral_code text unique;
+
+alter table training_requests add column if not exists conversation_id uuid;
+alter table training_requests add column if not exists requester_user_id uuid references auth.users(id) on delete set null;
+alter table training_requests add column if not exists guardian_user_id uuid references auth.users(id) on delete set null;
+alter table training_requests add column if not exists is_minor boolean default false;
+alter table training_requests add column if not exists guardian_name text;
+alter table training_requests add column if not exists guardian_required boolean default false;
+alter table training_requests add column if not exists guardian_confirmed_at timestamp with time zone;
+alter table training_requests add column if not exists parent_follow_up_sent_at timestamp with time zone;
+
+create table if not exists user_profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  role text not null default 'parent',
+  display_name text,
+  email_verified_at timestamp with time zone,
+  phone_verified_at timestamp with time zone,
+  account_status text default 'active',
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  coach_user_id uuid references auth.users(id) on delete cascade,
+  provider_customer_id text,
+  provider_subscription_id text,
+  plan_code text default 'free',
+  status text default 'free',
+  current_period_start timestamp with time zone,
+  current_period_end timestamp with time zone,
+  cancel_at_period_end boolean default false,
+  trial_started_at timestamp with time zone,
+  trial_ends_at timestamp with time zone,
+  access_ends_at timestamp with time zone,
+  founding_price_locked boolean default false,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+create table if not exists conversations (
+  id uuid primary key default gen_random_uuid(),
+  coach_id uuid references coaches(id) on delete cascade,
+  coach_user_id uuid references auth.users(id) on delete set null,
+  requester_user_id uuid references auth.users(id) on delete set null,
+  guardian_user_id uuid references auth.users(id) on delete set null,
+  sport text,
+  request_type text,
+  age_range text,
+  general_location text,
+  status text default 'new',
+  is_unread_by_coach boolean default true,
+  is_saved boolean default false,
+  saved_at timestamp with time zone,
+  saved_by_user_id uuid references auth.users(id) on delete set null,
+  retention_expires_at timestamp with time zone default (now() + interval '365 days'),
+  parent_follow_up_sent_at timestamp with time zone,
+  last_message_at timestamp with time zone default now(),
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'training_requests_conversation_fk'
+  ) then
+    alter table training_requests
+      add constraint training_requests_conversation_fk
+      foreign key (conversation_id) references conversations(id) on delete set null;
+  end if;
+end $$;
+
+create table if not exists conversation_private_details (
+  conversation_id uuid primary key references conversations(id) on delete cascade,
+  requester_display_name text,
+  requester_email text,
+  requester_phone text,
+  guardian_name text,
+  guardian_email text,
+  guardian_phone text,
+  exact_location text,
+  preferred_days_times text,
+  current_level text
+);
+
+create table if not exists messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid references conversations(id) on delete cascade,
+  sender_user_id uuid references auth.users(id) on delete set null,
+  sender_role text not null,
+  body text not null,
+  created_at timestamp with time zone default now(),
+  edited_at timestamp with time zone,
+  deleted_at timestamp with time zone
+);
+
+create table if not exists contact_share_events (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid references conversations(id) on delete cascade,
+  shared_by_user_id uuid references auth.users(id) on delete set null,
+  shared_fields text[] not null default '{}',
+  shared_values jsonb not null default '{}'::jsonb,
+  consented_at timestamp with time zone default now(),
+  revoked_at timestamp with time zone
+);
+
+create table if not exists player_records (
+  id uuid primary key default gen_random_uuid(),
+  coach_user_id uuid references auth.users(id) on delete cascade,
+  coach_id uuid references coaches(id) on delete cascade,
+  source_conversation_id uuid references conversations(id) on delete set null,
+  player_user_id uuid references auth.users(id) on delete set null,
+  display_name text not null,
+  birth_date date,
+  birth_year integer,
+  sport text,
+  position text,
+  current_level text,
+  current_team text,
+  training_goals text,
+  coach_notes text,
+  first_session_date date,
+  last_session_date date,
+  session_count integer default 0,
+  status text default 'prospective',
+  guardian_involved boolean default false,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+create table if not exists message_reports (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid references conversations(id) on delete cascade,
+  reported_by_user_id uuid references auth.users(id) on delete set null,
+  reported_user_id uuid references auth.users(id) on delete set null,
+  reason text,
+  details text,
+  status text default 'new',
+  reviewed_by uuid references auth.users(id) on delete set null,
+  created_at timestamp with time zone default now(),
+  reviewed_at timestamp with time zone
+);
+
+create table if not exists referrals (
+  id uuid primary key default gen_random_uuid(),
+  referrer_coach_user_id uuid references auth.users(id) on delete cascade,
+  referred_coach_user_id uuid references auth.users(id) on delete set null,
+  referral_code text not null,
+  status text default 'pending',
+  qualified_at timestamp with time zone,
+  rewarded_at timestamp with time zone,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists premium_access_grants (
+  id uuid primary key default gen_random_uuid(),
+  coach_user_id uuid references auth.users(id) on delete cascade,
+  grant_type text not null,
+  starts_at timestamp with time zone not null default now(),
+  ends_at timestamp with time zone not null,
+  referral_id uuid references referrals(id) on delete set null,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists banned_identifiers (
+  id uuid primary key default gen_random_uuid(),
+  identifier_type text not null,
+  identifier_hash text not null,
+  banned_user_id uuid references auth.users(id) on delete set null,
+  reason text,
+  created_at timestamp with time zone default now(),
+  created_by uuid references auth.users(id) on delete set null
+);
+
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  type text not null,
+  title text not null,
+  body text,
+  related_conversation_id uuid references conversations(id) on delete cascade,
+  read_at timestamp with time zone,
+  sent_at timestamp with time zone,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists moderation_logs (
+  id uuid primary key default gen_random_uuid(),
+  admin_user_id uuid references auth.users(id) on delete set null,
+  action text not null,
+  target_user_id uuid references auth.users(id) on delete set null,
+  conversation_id uuid references conversations(id) on delete set null,
+  reason text,
+  created_at timestamp with time zone default now()
+);
+
+create or replace view coach_conversation_safe_metadata as
+select
+  id,
+  coach_id,
+  coach_user_id,
+  sport,
+  request_type,
+  age_range,
+  general_location,
+  status,
+  is_unread_by_coach,
+  is_saved,
+  parent_follow_up_sent_at,
+  last_message_at,
+  created_at,
+  updated_at
+from conversations;
+
+alter table user_profiles enable row level security;
+alter table subscriptions enable row level security;
+alter table conversations enable row level security;
+alter table conversation_private_details enable row level security;
+alter table messages enable row level security;
+alter table contact_share_events enable row level security;
+alter table player_records enable row level security;
+alter table message_reports enable row level security;
+alter table referrals enable row level security;
+alter table premium_access_grants enable row level security;
+alter table banned_identifiers enable row level security;
+alter table notifications enable row level security;
+alter table moderation_logs enable row level security;
+
+create index if not exists coaches_user_id_idx on coaches(user_id);
+create index if not exists conversations_coach_id_idx on conversations(coach_id);
+create index if not exists conversations_coach_unread_idx on conversations(coach_id, is_unread_by_coach);
+create index if not exists conversations_retention_idx on conversations(retention_expires_at) where is_saved = false;
+create index if not exists messages_conversation_id_idx on messages(conversation_id);
+create index if not exists player_records_coach_id_idx on player_records(coach_id);
+create index if not exists subscriptions_coach_user_id_idx on subscriptions(coach_user_id);
+create index if not exists premium_access_grants_coach_user_id_idx on premium_access_grants(coach_user_id);
+
+create or replace function public.coach_has_message_access(target_coach_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from coaches
+    where coaches.user_id = target_coach_user_id
+      and coaches.admin_premium_access_until > now()
+  )
+  or exists (
+    select 1
+    from subscriptions
+    where subscriptions.coach_user_id = target_coach_user_id
+      and subscriptions.status in ('trialing', 'active', 'canceling')
+      and coalesce(subscriptions.access_ends_at, subscriptions.current_period_end, subscriptions.trial_ends_at) > now()
+  )
+  or exists (
+    select 1
+    from premium_access_grants
+    where premium_access_grants.coach_user_id = target_coach_user_id
+      and premium_access_grants.starts_at <= now()
+      and premium_access_grants.ends_at > now()
+  );
+$$;
+
+drop policy if exists "Coaches can read own safe conversation metadata" on conversations;
+create policy "Coaches can read own safe conversation metadata"
+on conversations for select
+using (coach_user_id = auth.uid());
+
+drop policy if exists "Requesters can read own conversations" on conversations;
+create policy "Requesters can read own conversations"
+on conversations for select
+using (requester_user_id = auth.uid() or guardian_user_id = auth.uid());
+
+drop policy if exists "Premium coaches can read own messages" on messages;
+create policy "Premium coaches can read own messages"
+on messages for select
+using (
+  exists (
+    select 1
+    from conversations
+    where conversations.id = messages.conversation_id
+      and conversations.coach_user_id = auth.uid()
+      and public.coach_has_message_access(auth.uid())
+  )
+);
+
+drop policy if exists "Requesters can read own messages" on messages;
+create policy "Requesters can read own messages"
+on messages for select
+using (
+  exists (
+    select 1
+    from conversations
+    where conversations.id = messages.conversation_id
+      and (conversations.requester_user_id = auth.uid() or conversations.guardian_user_id = auth.uid())
+  )
+);
+
+drop policy if exists "Premium coaches can insert own messages" on messages;
+create policy "Premium coaches can insert own messages"
+on messages for insert
+with check (
+  sender_user_id = auth.uid()
+  and sender_role = 'coach'
+  and exists (
+    select 1
+    from conversations
+    where conversations.id = messages.conversation_id
+      and conversations.coach_user_id = auth.uid()
+      and public.coach_has_message_access(auth.uid())
+  )
+);
+
+drop policy if exists "Premium coaches can read own player records" on player_records;
+create policy "Premium coaches can read own player records"
+on player_records for select
+using (coach_user_id = auth.uid() and public.coach_has_message_access(auth.uid()));
+
+drop policy if exists "Users can read own notifications" on notifications;
+create policy "Users can read own notifications"
+on notifications for select
+using (user_id = auth.uid());
