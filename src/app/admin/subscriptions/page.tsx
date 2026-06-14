@@ -1,7 +1,8 @@
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminUserOrRedirect } from "@/lib/auth";
 import { createPremiumAccessGrant, deactivatePremiumAccessGrant } from "@/lib/actions";
-import { getAdminCoaches, getAdminPremiumAccessGrants } from "@/lib/data";
+import { getAdminCoaches, getAdminPremiumAccessGrants, getAdminSubscriptions } from "@/lib/data";
+import type { Subscription } from "@/lib/types";
 
 const messages: Record<string, string> = {
   created: "Premium access grant created.",
@@ -21,8 +22,13 @@ export default async function AdminSubscriptionsPage({
 }) {
   await getAdminUserOrRedirect();
   const params = await searchParams;
-  const [coaches, grants] = await Promise.all([getAdminCoaches(), getAdminPremiumAccessGrants()]);
+  const [coaches, grants, subscriptions] = await Promise.all([
+    getAdminCoaches(),
+    getAdminPremiumAccessGrants(),
+    getAdminSubscriptions(),
+  ]);
   const coachesById = new Map(coaches.map((coach) => [coach.id, coach]));
+  const coachNamesById = new Map(coaches.map((coach) => [coach.id, coach.full_name]));
 
   return (
     <AdminLayout>
@@ -106,6 +112,21 @@ export default async function AdminSubscriptionsPage({
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-semibold text-slate-950">Stripe subscription diagnostics</h2>
+          {subscriptions.length ? (
+            <div className="mt-5 divide-y divide-slate-200">
+              {subscriptions.map((subscription) => (
+                <SubscriptionRow key={subscription.id} subscription={subscription} coachNamesById={coachNamesById} />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              No Stripe subscription records yet.
+            </p>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-slate-950">Access grants</h2>
           {grants.length ? (
             <div className="mt-5 divide-y divide-slate-200">
@@ -146,4 +167,38 @@ export default async function AdminSubscriptionsPage({
       </div>
     </AdminLayout>
   );
+}
+
+function SubscriptionRow({ subscription, coachNamesById }: { subscription: Subscription; coachNamesById: Map<string, string> }) {
+  const coachName = subscription.coach_id ? coachNamesById.get(subscription.coach_id) : null;
+
+  return (
+    <div className="grid gap-3 py-4 lg:grid-cols-[1.1fr_0.8fr_1fr_1fr] lg:items-center">
+      <div>
+        <p className="font-semibold text-slate-950">{coachName ?? subscription.coach_user_id ?? "Unknown coach"}</p>
+        <p className="mt-1 text-xs text-slate-500">Plan: {subscription.plan_code}</p>
+      </div>
+      <p className="text-sm capitalize text-slate-700">{subscription.status.replaceAll("_", " ")}</p>
+      <div className="text-sm text-slate-700">
+        <p>Subscription: {maskStripeId(subscription.provider_subscription_id)}</p>
+        <p className="mt-1">Customer: {maskStripeId(subscription.provider_customer_id)}</p>
+      </div>
+      <div className="text-sm text-slate-700">
+        <p>Price: {maskStripeId(subscription.stripe_price_id)}</p>
+        <p className="mt-1">Access ends: {subscription.access_ends_at ? new Date(subscription.access_ends_at).toLocaleString() : "Not set"}</p>
+      </div>
+    </div>
+  );
+}
+
+function maskStripeId(value: string | null | undefined) {
+  if (!value) {
+    return "Not set";
+  }
+
+  if (value.length <= 10) {
+    return `${value.slice(0, 4)}...`;
+  }
+
+  return `${value.slice(0, 7)}...${value.slice(-4)}`;
 }

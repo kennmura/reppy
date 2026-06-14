@@ -14,11 +14,6 @@ type EmailResult = {
   error?: string;
 };
 
-export function appUrl(path: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3002";
-  return `${baseUrl}${path}`;
-}
-
 export async function sendFreeCoachLockedRequestEmail({
   to,
   sport,

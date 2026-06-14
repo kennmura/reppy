@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { appUrl } from "./email";
+import { appUrl } from "./appUrl";
 
 export const requestLifecycleStatuses = [
   "pending",
@@ -78,6 +78,26 @@ export function hasStripeCheckoutConfig() {
   return Boolean(stripeSecretKey());
 }
 
+function assertStripeSecretKeyUsable(secretKey: string) {
+  if (!secretKey) {
+    throw new Error("Missing STRIPE_SECRET_KEY.");
+  }
+
+  if (process.env.NODE_ENV === "production" && secretKey.startsWith("sk_test_")) {
+    throw new Error("Stripe test secret key cannot be used in production.");
+  }
+}
+
+function assertStripePriceId(value: string, label: string) {
+  if (!value) {
+    throw new Error(`Missing Stripe price ID for ${label}.`);
+  }
+
+  if (!value.startsWith("price_")) {
+    throw new Error(`Stripe price ID for ${label} must start with price_.`);
+  }
+}
+
 export type CoachSubscriptionPlanCode = "premium_monthly" | "premium_annual" | "founding_599";
 
 export function stripeCoachPriceIdForPlan(planCode: CoachSubscriptionPlanCode) {
@@ -147,9 +167,7 @@ export type StripeConnectOnboardingLinkResult = {
 
 export async function createStripeCheckoutSession(input: CheckoutSessionInput): Promise<CheckoutSessionResult> {
   const secretKey = stripeSecretKey();
-  if (!secretKey) {
-    throw new Error("Missing STRIPE_SECRET_KEY.");
-  }
+  assertStripeSecretKeyUsable(secretKey);
 
   const params = new URLSearchParams();
   params.set("mode", "payment");
@@ -212,13 +230,8 @@ export async function createStripeSubscriptionCheckoutSession(
 ): Promise<SubscriptionCheckoutSessionResult> {
   const secretKey = stripeSecretKey();
   const priceId = stripeCoachPriceIdForPlan(input.planCode);
-  if (!secretKey) {
-    throw new Error("Missing STRIPE_SECRET_KEY.");
-  }
-
-  if (!priceId) {
-    throw new Error(`Missing Stripe price ID for ${input.planCode}.`);
-  }
+  assertStripeSecretKeyUsable(secretKey);
+  assertStripePriceId(priceId, input.planCode);
 
   const params = new URLSearchParams();
   params.set("mode", "subscription");
@@ -273,9 +286,7 @@ export async function createStripeBillingPortalSession({
   returnPath?: string;
 }): Promise<BillingPortalSessionResult> {
   const secretKey = stripeSecretKey();
-  if (!secretKey) {
-    throw new Error("Missing STRIPE_SECRET_KEY.");
-  }
+  assertStripeSecretKeyUsable(secretKey);
 
   const params = new URLSearchParams();
   params.set("customer", customerId);
@@ -307,9 +318,7 @@ export async function createStripeConnectExpressAccount({
   email: string | null;
 }): Promise<StripeConnectAccountResult> {
   const secretKey = stripeSecretKey();
-  if (!secretKey) {
-    throw new Error("Missing STRIPE_SECRET_KEY.");
-  }
+  assertStripeSecretKeyUsable(secretKey);
 
   const params = new URLSearchParams();
   params.set("type", "express");
@@ -340,9 +349,7 @@ export async function createStripeConnectOnboardingLink({
   accountId: string;
 }): Promise<StripeConnectOnboardingLinkResult> {
   const secretKey = stripeSecretKey();
-  if (!secretKey) {
-    throw new Error("Missing STRIPE_SECRET_KEY.");
-  }
+  assertStripeSecretKeyUsable(secretKey);
 
   const params = new URLSearchParams();
   params.set("account", accountId);
@@ -364,9 +371,7 @@ export async function createStripeConnectOnboardingLink({
 
 export async function getStripeSubscription(subscriptionId: string) {
   const secretKey = stripeSecretKey();
-  if (!secretKey) {
-    throw new Error("Missing STRIPE_SECRET_KEY.");
-  }
+  assertStripeSecretKeyUsable(secretKey);
 
   const response = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, {
     headers: {
@@ -396,6 +401,8 @@ export async function createFoundingSubscriptionSchedule({
   if (!foundingPriceId || !premiumMonthlyPriceId) {
     throw new Error("Missing founding or premium monthly Stripe price ID.");
   }
+  assertStripePriceId(foundingPriceId, "founding_599");
+  assertStripePriceId(premiumMonthlyPriceId, "premium_monthly");
 
   const createParams = new URLSearchParams();
   createParams.set("from_subscription", subscriptionId);
@@ -434,6 +441,7 @@ function addMonthsToUnixTimestamp(timestamp: number, months: number) {
 
 async function stripePost(url: string, params: URLSearchParams) {
   const secretKey = stripeSecretKey();
+  assertStripeSecretKeyUsable(secretKey);
   const response = await fetch(url, {
     method: "POST",
     headers: {

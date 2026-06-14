@@ -1,5 +1,6 @@
 import { AdminLayout } from "@/components/AdminLayout";
 import { CoachPromoCsvImport } from "@/components/admin/CoachPromoCsvImport";
+import { optionalAppBaseUrl } from "@/lib/appUrl";
 import { getAdminUserOrRedirect } from "@/lib/auth";
 import {
   createCoachAccessOfferAction,
@@ -186,9 +187,10 @@ export default async function AdminCoachPromoPage({
 
 function OfferRow({ offer }: { offer: CoachAccessOffer & { claimed_user_email?: string | null; claimed_coach_name?: string | null } }) {
   const status = offerStatus(offer);
+  const baseUrl = optionalAppBaseUrl();
   const inviteUrl =
-    offer.invite_token && process.env.NEXT_PUBLIC_APP_URL
-      ? `${process.env.NEXT_PUBLIC_APP_URL}/coach/billing?invite=${offer.invite_token}`
+    offer.invite_token && baseUrl
+      ? `${baseUrl}/coach/billing?invite=${offer.invite_token}`
       : offer.invite_token
         ? `/coach/billing?invite=${offer.invite_token}`
         : null;

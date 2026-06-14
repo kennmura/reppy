@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { phoneVerificationBypassStatus } from "@/lib/accountConfig";
+import { optionalAppBaseUrl } from "@/lib/appUrl";
 import {
   createSupabaseAdminClient,
   hasSupabaseAdminConfig,
@@ -15,7 +16,7 @@ export async function GET() {
     publicConfig,
     adminConfig,
     phoneVerificationBypass: phoneVerificationBypassStatus(),
-    appUrl: process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3002",
+    appUrl: optionalAppBaseUrl(),
   };
 
   if (!configured) {

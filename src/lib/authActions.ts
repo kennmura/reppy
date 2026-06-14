@@ -18,17 +18,13 @@ import {
   hasSupabaseConfig,
   hasSupabasePublicConfig,
 } from "./supabase";
+import { appUrl } from "./appUrl";
 import { isMissingCoachLocationColumnError, resolveCoachLocationFields } from "./location";
 import type { UserRole } from "./types";
 
 function textValue(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
-}
-
-function appUrl(path: string) {
-  const base = process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3002";
-  return new URL(path, base).toString();
 }
 
 function safeNext(value: string, fallback = "/account/dashboard") {

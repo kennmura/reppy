@@ -29,6 +29,7 @@ import type {
   PremiumAccessGrant,
   PlayerRecord,
   SavedCoach,
+  Subscription,
   TrainingRequest,
   TrainingRequestBundle,
   TrainingRequestPayment,
@@ -448,6 +449,25 @@ export async function getAdminPremiumAccessGrants(): Promise<PremiumAccessGrant[
   return (data ?? []) as PremiumAccessGrant[];
 }
 
+export async function getAdminSubscriptions(): Promise<Subscription[]> {
+  noStore();
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("*")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
+
+  return (data ?? []) as Subscription[];
+}
+
 function compactAuthUser(user: unknown): AdminAuthUserSummary | null {
   if (!user || typeof user !== "object") {
     return null;
@@ -584,6 +604,25 @@ export async function getAdminTrainingRequests(): Promise<TrainingRequest[]> {
   }
 
   return (data ?? []) as TrainingRequest[];
+}
+
+export async function getAdminTrainingRequestPayments(): Promise<TrainingRequestPayment[]> {
+  noStore();
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("training_request_payments")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
+
+  return (data ?? []) as TrainingRequestPayment[];
 }
 
 export async function getCoachTrainingRequests(coachId: string, limit = 8): Promise<TrainingRequest[]> {

@@ -9,7 +9,8 @@ import {
   missingAccountRequestProfileFields,
 } from "@/lib/accountProfile";
 import { getUserCoachingPreference } from "@/lib/data";
-import { appUrl, sendFreeCoachLockedRequestEmail } from "@/lib/email";
+import { appUrl } from "@/lib/appUrl";
+import { sendFreeCoachLockedRequestEmail } from "@/lib/email";
 import { getMessageAccess } from "@/lib/entitlements";
 import { createNotification } from "@/lib/notifications";
 import { sendPushNotificationToUser } from "@/lib/push";

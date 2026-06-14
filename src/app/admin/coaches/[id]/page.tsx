@@ -224,7 +224,11 @@ export default async function AdminCoachEditPage({ params }: { params: Promise<{
               name="stripe_connected_account_id"
               defaultValue={coach.stripe_connected_account_id ?? ""}
               placeholder="acct_..."
+              inputType="password"
             />
+            <p className="text-xs text-slate-500">
+              Support display: {maskStripeId(coach.stripe_connected_account_id)}
+            </p>
           </section>
 
           <div className="flex flex-wrap gap-5">
@@ -353,6 +357,7 @@ function Field({
   name,
   defaultValue,
   placeholder,
+  inputType = "text",
   required = false,
   wide = false,
   textarea = false,
@@ -362,6 +367,7 @@ function Field({
   name: string;
   defaultValue: string;
   placeholder?: string;
+  inputType?: string;
   required?: boolean;
   wide?: boolean;
   textarea?: boolean;
@@ -385,6 +391,7 @@ function Field({
       ) : (
         <input
           name={name}
+          type={inputType}
           required={required}
           defaultValue={defaultValue}
           placeholder={placeholder}
@@ -393,4 +400,16 @@ function Field({
       )}
     </label>
   );
+}
+
+function maskStripeId(value: string | null | undefined) {
+  if (!value) {
+    return "Not connected";
+  }
+
+  if (value.length <= 10) {
+    return `${value.slice(0, 4)}...`;
+  }
+
+  return `${value.slice(0, 7)}...${value.slice(-4)}`;
 }

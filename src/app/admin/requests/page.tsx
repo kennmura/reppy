@@ -2,12 +2,23 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { StatusBadge } from "@/components/StatusBadge";
 import { deleteTrainingRequest } from "@/lib/actions";
 import { getAdminUserOrRedirect } from "@/lib/auth";
-import { getAdminTrainingRequests } from "@/lib/data";
-import type { TrainingRequest } from "@/lib/types";
+import { getAdminTrainingRequestPayments, getAdminTrainingRequests } from "@/lib/data";
+import type { TrainingRequest, TrainingRequestPayment } from "@/lib/types";
 
 export default async function AdminRequestsPage() {
   await getAdminUserOrRedirect();
-  const requests = await getAdminTrainingRequests();
+  const [requests, payments] = await Promise.all([getAdminTrainingRequests(), getAdminTrainingRequestPayments()]);
+  const paymentsByRequest = new Map<string, TrainingRequestPayment[]>();
+
+  for (const payment of payments) {
+    if (!payment.training_request_id) {
+      continue;
+    }
+
+    const existing = paymentsByRequest.get(payment.training_request_id) ?? [];
+    existing.push(payment);
+    paymentsByRequest.set(payment.training_request_id, existing);
+  }
 
   return (
     <AdminLayout>
@@ -18,7 +29,9 @@ export default async function AdminRequestsPage() {
         </p>
         <div className="mt-6 space-y-4">
           {requests.length ? (
-            requests.map((request) => <RequestPanel key={request.id} request={request} />)
+            requests.map((request) => (
+              <RequestPanel key={request.id} request={request} payments={paymentsByRequest.get(request.id) ?? []} />
+            ))
           ) : (
             <div className="rounded-lg border border-slate-200 bg-white p-6 text-slate-600">
               No requests yet.
@@ -30,7 +43,7 @@ export default async function AdminRequestsPage() {
   );
 }
 
-function RequestPanel({ request }: { request: TrainingRequest }) {
+function RequestPanel({ request, payments }: { request: TrainingRequest; payments: TrainingRequestPayment[] }) {
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -60,6 +73,35 @@ function RequestPanel({ request }: { request: TrainingRequest }) {
         <Detail label="Training goals" value={request.training_goals} wide />
         <Detail label="Message" value={request.message} wide />
       </dl>
+      <section className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4">
+        <h3 className="text-sm font-semibold text-slate-950">Payment diagnostics</h3>
+        {payments.length ? (
+          <div className="mt-3 divide-y divide-slate-200">
+            {payments.map((payment) => (
+              <div key={payment.id} className="grid gap-2 py-3 text-sm sm:grid-cols-[1fr_1fr_1.2fr]">
+                <div>
+                  <p className="font-semibold capitalize text-slate-950">{payment.status.replaceAll("_", " ")}</p>
+                  <p className="mt-1 text-slate-600">
+                    {payment.session_kind.replaceAll("_", " ")} - {paymentMethodLabel(payment.payment_method)}
+                  </p>
+                </div>
+                <div className="text-slate-700">
+                  <p>Gross: {formatCents(payment.gross_amount_cents, payment.currency)}</p>
+                  <p className="mt-1">Fee: {formatCents(payment.platform_fee_cents, payment.currency)}</p>
+                  <p className="mt-1">Coach payout: {formatCents(payment.coach_payout_cents, payment.currency)}</p>
+                </div>
+                <div className="text-slate-700">
+                  <p>Checkout: {maskStripeId(payment.stripe_checkout_session_id)}</p>
+                  <p className="mt-1">Payment intent: {maskStripeId(payment.stripe_payment_intent_id)}</p>
+                  <p className="mt-1">Updated: {new Date(payment.updated_at).toLocaleString()}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-slate-600">No payment rows recorded for this request.</p>
+        )}
+      </section>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
         <a
           href={request.conversation_id ? `/admin/conversations` : "/admin/requests"}
@@ -132,4 +174,23 @@ function formatTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function formatCents(cents: number, currency: string) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency || "usd",
+  }).format(cents / 100);
+}
+
+function maskStripeId(value: string | null | undefined) {
+  if (!value) {
+    return "Not set";
+  }
+
+  if (value.length <= 10) {
+    return `${value.slice(0, 4)}...`;
+  }
+
+  return `${value.slice(0, 7)}...${value.slice(-4)}`;
 }

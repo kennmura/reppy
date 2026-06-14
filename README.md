@@ -234,3 +234,9 @@ npm run typecheck
 npm run build
 npm run test:e2e
 ```
+
+## Deployment
+
+Use `LAUNCH_CHECKLIST.md` before private beta or production deployment. It lists
+the Vercel environment variables, Supabase dashboard settings, Stripe live-mode
+setup, domain changes, smoke tests, monitoring checks, and rollback plan.

@@ -2,7 +2,7 @@ import { CoachShell } from "@/components/coach/CoachShell";
 import { getCoachContextOrRedirect } from "@/lib/auth";
 import { getCoachUnreadCount } from "@/lib/data";
 import { getMessageAccess } from "@/lib/entitlements";
-import { appUrl } from "@/lib/email";
+import { appUrl } from "@/lib/appUrl";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";

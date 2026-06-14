@@ -8,6 +8,14 @@ const sections = [
     body: "Authentication emails, account confirmation, password recovery, and sign-in links are handled through the authentication provider. Reppy does not use its custom alert email provider for standard authentication emails.",
   },
   {
+    title: "Private account details",
+    body: "Player date of birth, parent or guardian details, phone verification details, and account-type details are treated as private account data. These fields are used for account setup, request autofill, minor-safety workflows, support, and legal or fraud-prevention needs. They are not intended to be publicly readable.",
+  },
+  {
+    title: "Payments and payouts",
+    body: "Stripe processes card payments, subscriptions, billing portal sessions, Connect onboarding, payout eligibility, and bank or tax details. Reppy stores payment status, amounts, platform-fee records, payout amounts, masked or truncated Stripe identifiers for support, and safe Stripe metadata. Reppy should not store full card numbers, bank-account numbers, or Stripe secret keys.",
+  },
+  {
     title: "Messages stay inside Reppy",
     body: "Training requests, coach replies, and parent or player replies are stored and viewed inside Reppy. Normal conversation activity is not delivered by email.",
   },
