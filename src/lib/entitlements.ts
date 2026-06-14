@@ -2,6 +2,7 @@ import { createSupabaseAdminClient } from "./supabase";
 import type { Coach, MessageAccess, SubscriptionStatus } from "./types";
 
 const activeSubscriptionStatuses: SubscriptionStatus[] = ["active", "trialing", "canceling"];
+const foundingTrialPlanCode = process.env.FOUNDING_COACH_PLAN_CODE ?? "founding_5";
 
 function isFuture(value: string | null | undefined) {
   return Boolean(value && new Date(value).getTime() > Date.now());
@@ -74,15 +75,17 @@ export async function getMessageAccess({
     }
   }
 
+  const now = new Date().toISOString();
   const { data: grant } = await supabase
     .from("premium_access_grants")
     .select("ends_at, grant_type")
-    .eq("coach_user_id", coachUserId)
-    .lte("starts_at", new Date().toISOString())
-    .gt("ends_at", new Date().toISOString())
+    .or(`coach_user_id.eq.${coachUserId},user_id.eq.${coachUserId}`)
+    .eq("is_active", true)
+    .lte("starts_at", now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`)
     .order("ends_at", { ascending: false })
     .limit(1)
-    .maybeSingle<{ ends_at: string; grant_type: string }>();
+    .maybeSingle<{ ends_at: string | null; grant_type: string }>();
 
   if (grant) {
     return {
@@ -128,7 +131,7 @@ export async function startCoachTrial({
   const trialEndsAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const { error } = await supabase.from("subscriptions").insert({
     coach_user_id: coachUserId,
-    plan_code: "founding_premium_500",
+    plan_code: foundingTrialPlanCode,
     status: "trialing",
     trial_started_at: now.toISOString(),
     trial_ends_at: trialEndsAt.toISOString(),

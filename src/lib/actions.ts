@@ -187,7 +187,7 @@ export async function signOutAdmin() {
 export async function signInCoach(formData: FormData) {
   const email = textValue(formData, "email");
   const password = textValue(formData, "password");
-  const loginPath = safeLoginPath(textValue(formData, "login_path"), "/coach/login");
+  const loginPath = safeLoginPath(textValue(formData, "login_path"), "/account/login");
 
   if (!email || !password) {
     redirect(`${loginPath}?error=missing-fields`);
@@ -218,7 +218,7 @@ export async function signInCoach(formData: FormData) {
 export async function signOutCoach() {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
-  redirect("/coach/login");
+  redirect("/account/login?role=coach");
 }
 
 export async function signOutAccount() {
@@ -810,6 +810,7 @@ export async function saveCoachProfile(formData: FormData) {
     state: textValue(formData, "state"),
     zipCode,
   });
+  const serviceRadiusMiles = optionalInteger(textValue(formData, "service_radius_miles")) ?? coach.service_radius_miles ?? 30;
   const profilePayload: Partial<Coach> = {
     full_name: fullName,
     slug,
@@ -829,11 +830,13 @@ export async function saveCoachProfile(formData: FormData) {
     training_format: textValue(formData, "training_format") || null,
     general_availability: textValue(formData, "general_availability") || null,
     location: location || zipCode || null,
+    public_location: resolvedLocation.public_location,
     city: resolvedLocation.city,
     state: resolvedLocation.state,
     zip_code: resolvedLocation.zip_code,
     latitude: resolvedLocation.latitude,
     longitude: resolvedLocation.longitude,
+    service_radius_miles: Math.max(1, Math.min(100, serviceRadiusMiles)),
     service_area: textValue(formData, "service_area") || null,
     pricing_text: textValue(formData, "pricing_text") || "Pricing available upon request.",
     profile_photo_url: uploadedProfilePhotoUrl || textValue(formData, "profile_photo_url") || coach.profile_photo_url || null,
@@ -865,6 +868,8 @@ export async function saveCoachProfile(formData: FormData) {
     delete legacyPayload.zip_code;
     delete legacyPayload.latitude;
     delete legacyPayload.longitude;
+    delete legacyPayload.public_location;
+    delete legacyPayload.service_radius_miles;
     const fallback = await supabase.from("coaches").update(legacyPayload).eq("id", coach.id);
     updateError = fallback.error;
   }
@@ -977,6 +982,115 @@ export async function saveAccountPreferences(formData: FormData) {
   revalidatePath("/account/preferences");
   revalidatePath("/account/dashboard");
   redirect("/account/preferences?saved=1");
+}
+
+export async function toggleSavedCoach(formData: FormData) {
+  const { user } = await getAccountContextOrRedirect();
+  const coachId = textValue(formData, "coach_id");
+  const coachSlug = slugify(textValue(formData, "coach_slug"));
+  const wasSaved = textValue(formData, "saved") === "1";
+
+  if (!coachId || !coachSlug) {
+    redirect("/coaches");
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  if (wasSaved) {
+    const { error } = await supabase
+      .from("saved_coaches")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("coach_id", coachId);
+
+    if (error) {
+      throw error;
+    }
+  } else {
+    const { error } = await supabase.from("saved_coaches").upsert(
+      {
+        user_id: user.id,
+        coach_id: coachId,
+      },
+      { onConflict: "user_id,coach_id" },
+    );
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  revalidatePath("/account/dashboard");
+  revalidatePath(`/coaches/${coachSlug}`);
+  redirect(`/coaches/${coachSlug}${wasSaved ? "?unsaved=1" : "?saved=1"}`);
+}
+
+export async function createPremiumAccessGrant(formData: FormData) {
+  const adminUser = await requireAdmin();
+  const coachId = textValue(formData, "coach_id");
+  const grantType = textValue(formData, "grant_type") || "manual";
+  const endsAt = textValue(formData, "ends_at") || null;
+  const notes = textValue(formData, "notes") || null;
+
+  if (!coachId) {
+    redirect("/admin/subscriptions?error=missing-coach");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: coach, error: coachError } = await supabase
+    .from("coaches")
+    .select("id, user_id")
+    .eq("id", coachId)
+    .maybeSingle<{ id: string; user_id: string | null }>();
+
+  if (coachError) {
+    throw coachError;
+  }
+
+  if (!coach?.user_id) {
+    redirect("/admin/subscriptions?error=missing-coach-user");
+  }
+
+  const { error } = await supabase.from("premium_access_grants").insert({
+    coach_id: coach.id,
+    user_id: coach.user_id,
+    coach_user_id: coach.user_id,
+    grant_type: grantType,
+    starts_at: new Date().toISOString(),
+    ends_at: endsAt,
+    granted_by: adminUser.id,
+    is_active: true,
+    notes,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  revalidatePath("/admin/subscriptions");
+  redirect("/admin/subscriptions?grant=created");
+}
+
+export async function deactivatePremiumAccessGrant(formData: FormData) {
+  await requireAdmin();
+  const grantId = textValue(formData, "grant_id");
+
+  if (!grantId) {
+    redirect("/admin/subscriptions?error=missing-grant");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("premium_access_grants")
+    .update({ is_active: false })
+    .eq("id", grantId);
+
+  if (error) {
+    throw error;
+  }
+
+  revalidatePath("/admin/subscriptions");
+  redirect("/admin/subscriptions?grant=deactivated");
 }
 
 export async function updateRequestStatus(formData: FormData) {
@@ -1140,9 +1254,16 @@ export async function updateCoach(formData: FormData) {
     file: fileValue(formData, "banner_image_file"),
     folder: "cover",
   });
-  const { error } = await supabase
-    .from("coaches")
-    .update({
+  const location = textValue(formData, "location");
+  const zipCode = textValue(formData, "zip_code");
+  const resolvedLocation = resolveCoachLocationFields({
+    location,
+    city: textValue(formData, "city"),
+    state: textValue(formData, "state"),
+    zipCode,
+  });
+  const serviceRadiusMiles = optionalInteger(textValue(formData, "service_radius_miles")) ?? 30;
+  const coachPayload: Partial<Coach> = {
       full_name: textValue(formData, "full_name"),
       slug,
       email: textValue(formData, "email") || null,
@@ -1151,7 +1272,14 @@ export async function updateCoach(formData: FormData) {
       category: textValue(formData, "category") || null,
       headline: textValue(formData, "headline") || null,
       bio: textValue(formData, "bio") || null,
-      location: textValue(formData, "location") || null,
+      location: location || zipCode || null,
+      public_location: resolvedLocation.public_location,
+      city: resolvedLocation.city,
+      state: resolvedLocation.state,
+      zip_code: resolvedLocation.zip_code,
+      latitude: resolvedLocation.latitude,
+      longitude: resolvedLocation.longitude,
+      service_radius_miles: Math.max(1, Math.min(100, serviceRadiusMiles)),
       service_area: textValue(formData, "service_area") || null,
       pricing_text: textValue(formData, "pricing_text") || "Pricing available upon request.",
       profile_photo_url: uploadedProfilePhotoUrl || textValue(formData, "profile_photo_url") || null,
@@ -1166,8 +1294,22 @@ export async function updateCoach(formData: FormData) {
       contact_scan_status: hasContactInfo ? "flagged" : "clear",
       admin_premium_access_until: textValue(formData, "admin_premium_access_until") || null,
       updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
+    };
+
+  let { error } = await supabase.from("coaches").update(coachPayload).eq("id", id);
+
+  if (error && isMissingCoachLocationColumnError(error)) {
+    const legacyPayload = { ...coachPayload };
+    delete legacyPayload.city;
+    delete legacyPayload.state;
+    delete legacyPayload.zip_code;
+    delete legacyPayload.latitude;
+    delete legacyPayload.longitude;
+    delete legacyPayload.public_location;
+    delete legacyPayload.service_radius_miles;
+    const fallback = await supabase.from("coaches").update(legacyPayload).eq("id", id);
+    error = fallback.error;
+  }
 
   if (error) {
     throw error;

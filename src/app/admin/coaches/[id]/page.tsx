@@ -114,6 +114,14 @@ export default async function AdminCoachEditPage({ params }: { params: Promise<{
             <Field label="Category" name="category" defaultValue={coach.category ?? ""} />
             <Field label="Headline" name="headline" defaultValue={coach.headline ?? ""} wide />
             <Field label="Location" name="location" defaultValue={coach.location ?? ""} />
+            <Field label="City" name="city" defaultValue={coach.city ?? ""} />
+            <Field label="State" name="state" defaultValue={coach.state ?? ""} />
+            <Field label="ZIP code" name="zip_code" defaultValue={coach.zip_code ?? ""} />
+            <Field
+              label="Service radius in miles"
+              name="service_radius_miles"
+              defaultValue={(coach.service_radius_miles ?? 30).toString()}
+            />
             <Field
               label="Service area"
               name="service_area"

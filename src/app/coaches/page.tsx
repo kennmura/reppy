@@ -14,11 +14,12 @@ export default async function CoachesPage({
   const selectedSport = sportFromSlug(params.sport);
   const selectedSportSlug = selectedSport ? sportToSlug(selectedSport) : "";
   const location = params.location?.trim() ?? "";
-  const canFilterByLocation = !location || Boolean(geocodeLocationInput(location));
+  const hasCoordinateOrigin = Boolean(location && geocodeLocationInput(location));
+  const trainingType = params.training_type?.trim() ?? "";
   const hasFilters = Boolean(selectedSportSlug || location || params.training_type);
   const coaches = params.sport && !selectedSport
     ? []
-    : await getPublishedCoaches({ sport: selectedSport, location: canFilterByLocation ? location : null });
+    : await getPublishedCoaches({ sport: selectedSport, location, trainingType });
 
   return (
     <main className="bg-[#f7f8f3] py-14">
@@ -100,10 +101,9 @@ export default async function CoachesPage({
             ) : null}
           </div>
         </form>
-        {location && !canFilterByLocation ? (
+        {location && !hasCoordinateOrigin ? (
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
-            Location search is being improved. Showing matching coaches based on available profile
-            information.
+            We could not calculate distance for that location yet. Showing matching coaches instead.
           </div>
         ) : null}
         {coaches.length ? (

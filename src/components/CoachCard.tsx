@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, MapPin } from "lucide-react";
+import { formatDistanceMiles } from "@/lib/location";
 import type { Coach } from "@/lib/types";
 
 export function CoachCard({ coach }: { coach: Coach }) {
@@ -9,6 +10,9 @@ export function CoachCard({ coach }: { coach: Coach }) {
     .join("")
     .slice(0, 2);
   const acceptingRequests = coach.accepting_requests !== false;
+  const locationLabel =
+    coach.public_location || [coach.city, coach.state].filter(Boolean).join(", ") || coach.location;
+  const distanceLabel = formatDistanceMiles(coach.distance_miles);
 
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -41,11 +45,11 @@ export function CoachCard({ coach }: { coach: Coach }) {
       <p className="mt-4 flex items-center gap-2 text-sm text-slate-600">
         <MapPin className="h-4 w-4 text-[#2f6f5e]" />
         <span>
-          {coach.location}
-          {typeof coach.distance_miles === "number" ? (
+          {locationLabel}
+          {distanceLabel ? (
             <span className="font-medium text-slate-800">
               {" "}
-              - {coach.distance_miles.toFixed(1)} miles away
+              - {distanceLabel}
             </span>
           ) : null}
         </span>

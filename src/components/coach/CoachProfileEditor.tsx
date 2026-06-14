@@ -112,6 +112,12 @@ export function CoachProfileEditor({
         <Field label="City" name="city" defaultValue={coach?.city ?? ""} />
         <Field label="State" name="state" defaultValue={coach?.state ?? ""} placeholder="MA" />
         <Field label="ZIP code" name="zip_code" defaultValue={coach?.zip_code ?? ""} />
+        <Field
+          label="Service radius in miles"
+          name="service_radius_miles"
+          defaultValue={(coach?.service_radius_miles ?? 30).toString()}
+          placeholder="30"
+        />
         <Field label="Service area" name="service_area" defaultValue={coach?.service_area ?? ""} wide textarea rows={3} />
         <Field label="Pricing text" name="pricing_text" defaultValue={coach?.pricing_text ?? ""} wide />
       </EditorSection>

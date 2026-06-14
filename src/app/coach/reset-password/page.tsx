@@ -19,8 +19,8 @@ export default async function CoachResetPasswordPage({
     <main className="bg-[#f7f8f3] py-14">
       <div className="mx-auto max-w-md px-4 sm:px-6 lg:px-8">
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <Link href="/coach/login" className="text-sm font-medium text-[#12355b]">
-            Back to coach sign in
+          <Link href="/account/login?role=coach" className="text-sm font-medium text-[#12355b]">
+            Back to Sign In / Sign Up
           </Link>
           <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">
             Choose a new password

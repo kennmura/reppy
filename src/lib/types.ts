@@ -20,12 +20,14 @@ export type Coach = {
   training_format?: string | null;
   general_availability?: string | null;
   location: string | null;
+  public_location?: string | null;
   city?: string | null;
   state?: string | null;
   zip_code?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   distance_miles?: number | null;
+  service_radius_miles?: number | null;
   service_area: string | null;
   pricing_text: string | null;
   profile_photo_url: string | null;
@@ -186,6 +188,43 @@ export type MessageAccess = {
   trialEndsAt: string | null;
   accessEndsAt: string | null;
   foundingPriceLocked: boolean;
+};
+
+export type PremiumAccessGrant = {
+  id: string;
+  coach_user_id: string | null;
+  coach_id?: string | null;
+  user_id?: string | null;
+  grant_type: string;
+  starts_at: string;
+  ends_at: string | null;
+  referral_id?: string | null;
+  granted_by?: string | null;
+  is_active?: boolean | null;
+  notes?: string | null;
+  created_at: string;
+};
+
+export type SavedCoach = {
+  id: string;
+  user_id: string;
+  coach_id: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type CoachReview = {
+  id: string;
+  coach_id: string;
+  reviewer_user_id: string | null;
+  conversation_id: string | null;
+  rating: number;
+  headline: string | null;
+  body: string | null;
+  status: "pending" | "approved" | "rejected" | "reported" | "hidden";
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
 };
 
 export type ConversationStatus =

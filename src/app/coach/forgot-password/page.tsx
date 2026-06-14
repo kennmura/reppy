@@ -19,8 +19,8 @@ export default async function CoachForgotPasswordPage({
     <AuthPanel
       title="Reset coach password"
       body="Enter the email tied to your coach account. Supabase will send a recovery link."
-      backHref="/coach/login"
-      backLabel="Back to coach sign in"
+      backHref="/account/login?role=coach"
+      backLabel="Back to Sign In / Sign Up"
     >
       {params.sent ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">

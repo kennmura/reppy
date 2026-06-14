@@ -18,15 +18,11 @@ function safeNext(value: string | null) {
   return value;
 }
 
-function loginFor(next: string | null) {
-  return next?.startsWith("/coach") ? "/coach/login" : "/account/login";
-}
-
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const next = safeNext(requestUrl.searchParams.get("next"));
-  const fallbackLogin = loginFor(next);
+  const fallbackLogin = "/account/login";
 
   if (!hasSupabaseConfig() || !code) {
     return NextResponse.redirect(new URL(`${fallbackLogin}?error=invalid-link`, requestUrl.origin));

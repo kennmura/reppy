@@ -35,6 +35,24 @@ function safeNext(value: string, fallback = "/account/dashboard") {
   return value;
 }
 
+function redirectAccountRegisterWithError(formData: FormData, error: string, next: string): never {
+  const params = new URLSearchParams({ error });
+  const preservedKeys = ["display_name", "email", "phone", "role"];
+
+  for (const key of preservedKeys) {
+    const value = textValue(formData, key);
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  if (next) {
+    params.set("next", next);
+  }
+
+  redirect(`/account/register?${params.toString()}`);
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -114,6 +132,7 @@ async function registerUser({
   }
 
   const supabase = await createSupabaseServerClient();
+  await supabase.auth.signOut();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -201,11 +220,13 @@ async function seedCoachProfileFromSignup({
     slug,
     email,
     location,
+    public_location: resolvedLocation.public_location,
     city: resolvedLocation.city,
     state: resolvedLocation.state,
     zip_code: resolvedLocation.zip_code,
     latitude: resolvedLocation.latitude,
     longitude: resolvedLocation.longitude,
+    service_radius_miles: 30,
     pricing_text: "Pricing available upon request.",
     profile_status: "draft",
     is_published: false,
@@ -235,6 +256,8 @@ async function seedCoachProfileFromSignup({
     delete legacyPayload.zip_code;
     delete legacyPayload.latitude;
     delete legacyPayload.longitude;
+    delete legacyPayload.public_location;
+    delete legacyPayload.service_radius_miles;
     const legacyWrite = existing
       ? supabase.from("coaches").update(legacyPayload).eq("id", existing.id)
       : supabase.from("coaches").insert({ ...legacyPayload, created_at: now });
@@ -254,11 +277,11 @@ export async function registerAccount(formData: FormData) {
   const next = safeNext(textValue(formData, "next"), "/account/dashboard");
 
   if (!phone) {
-    redirect("/account/register?error=invalid-phone");
+    redirectAccountRegisterWithError(formData, "invalid-phone", next);
   }
 
   if (!acceptedPrivacy) {
-    redirect("/account/register?error=privacy-required");
+    redirectAccountRegisterWithError(formData, "privacy-required", next);
   }
 
   const displayName = textValue(formData, "display_name");
@@ -267,19 +290,19 @@ export async function registerAccount(formData: FormData) {
   const acceptedTerms = formData.get("terms") === "on";
 
   if (!displayName || !email || !password) {
-    redirect("/account/register?error=missing-fields");
+    redirectAccountRegisterWithError(formData, "missing-fields", next);
   }
 
   if (passwordError) {
-    redirect(`/account/register?error=${passwordError}`);
+    redirectAccountRegisterWithError(formData, passwordError, next);
   }
 
   if (!acceptedTerms) {
-    redirect("/account/register?error=terms-required");
+    redirectAccountRegisterWithError(formData, "terms-required", next);
   }
 
   if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
-    redirect("/account/register?error=missing-supabase");
+    redirectAccountRegisterWithError(formData, "missing-supabase", next);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -298,7 +321,7 @@ export async function registerAccount(formData: FormData) {
   });
 
   if (error || !data.user) {
-    redirect("/account/register?error=register-failed");
+    redirectAccountRegisterWithError(formData, "register-failed", next);
   }
 
   await ensureApplicationProfile({

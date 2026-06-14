@@ -1,20 +1,25 @@
 import Link from "next/link";
-import { Award, Camera, MessageSquare, Star } from "lucide-react";
+import { Award, Bookmark, Camera, MessageSquare, Star } from "lucide-react";
 import { LocationSection } from "./LocationSection";
 import { PricingSection } from "./PricingSection";
 import { RequestTrainingForm } from "./RequestTrainingForm";
 import { ServiceCard } from "./ServiceCard";
+import { toggleSavedCoach } from "@/lib/actions";
 import { getRequestingAccountState } from "@/lib/auth";
+import { getSavedCoachIdsForUser } from "@/lib/data";
 import type { Coach, CoachProfileData } from "@/lib/types";
 
 export async function CoachProfile({ profile }: { profile: CoachProfileData }) {
   const { coach, services, audiences, testimonials, credentials = [] } = profile;
   const accountState = await getRequestingAccountState();
+  const savedCoachIds =
+    accountState.status === "verified" ? await getSavedCoachIdsForUser(accountState.user.id, [coach.id]) : [];
+  const isSaved = savedCoachIds.includes(coach.id);
   const requestCtaLabel = coach.accepting_requests === false ? "Not accepting requests" : "Request Training";
 
   return (
     <>
-      <SocialProfileHeader coach={coach} requestCtaLabel={requestCtaLabel} />
+      <SocialProfileHeader coach={coach} requestCtaLabel={requestCtaLabel} isSaved={isSaved} />
       <section className="bg-[#f7f8f3] py-8 sm:py-10">
         <div className="mx-auto grid max-w-6xl gap-6 px-4 sm:px-6 lg:grid-cols-[0.72fr_1.28fr] lg:px-8">
           <aside className="space-y-4">
@@ -22,7 +27,7 @@ export async function CoachProfile({ profile }: { profile: CoachProfileData }) {
               <h2 className="text-lg font-semibold text-slate-950">Quick facts</h2>
               <div className="mt-4 grid gap-3 text-sm leading-6">
                 <QuickFact label="Sport" value={coach.sport ?? coach.category ?? "Not listed"} />
-                <QuickFact label="Location" value={coach.location ?? "Available after request"} />
+                <QuickFact label="Location" value={coachLocationLabel(coach) ?? "Available after request"} />
                 <QuickFact label="Training format" value={coach.training_format ?? "Private and small-group"} />
                 <QuickFact label="Age groups" value={coach.age_groups ?? "Ask coach"} />
                 <QuickFact label="Price/session" value={coach.pricing_text ?? "Contact for pricing"} />
@@ -209,9 +214,11 @@ function MiniInfo({ title, body }: { title: string; body: string }) {
 function SocialProfileHeader({
   coach,
   requestCtaLabel,
+  isSaved,
 }: {
   coach: Coach;
   requestCtaLabel: string;
+  isSaved: boolean;
 }) {
   const coverImage = coach.banner_image_url || "/images/soccer-training-hero.png";
   const hasMessagingBadge =
@@ -248,7 +255,7 @@ function SocialProfileHeader({
               <span className="hidden sm:inline" aria-hidden="true">
                 -
               </span>
-              <span>{coach.location}</span>
+              <span>{coachLocationLabel(coach)}</span>
               <span className="hidden sm:inline" aria-hidden="true">
                 -
               </span>
@@ -266,6 +273,15 @@ function SocialProfileHeader({
             ) : null}
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+            <form action={toggleSavedCoach}>
+              <input type="hidden" name="coach_id" value={coach.id} />
+              <input type="hidden" name="coach_slug" value={coach.slug} />
+              <input type="hidden" name="saved" value={isSaved ? "1" : "0"} />
+              <button className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 hover:border-slate-500 sm:w-auto">
+                <Bookmark className={`h-4 w-4 ${isSaved ? "fill-[#2f6f5e] text-[#2f6f5e]" : ""}`} />
+                {isSaved ? "Saved" : "Save"}
+              </button>
+            </form>
             <Link
               href="#request-training"
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-[#12355b] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0d2948]"
@@ -295,6 +311,10 @@ function SocialProfileHeader({
       </div>
     </section>
   );
+}
+
+function coachLocationLabel(coach: Coach) {
+  return coach.public_location || [coach.city, coach.state].filter(Boolean).join(", ") || coach.location;
 }
 
 function RequestTrainingGate({

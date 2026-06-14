@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:focused": "node scripts/focused-regression-tests.mjs",
+    "test:e2e": "playwright test",
     "test": "npm run test:focused && npm run lint && npm run typecheck",
     "push:generate-keys": "web-push generate-vapid-keys"
   },

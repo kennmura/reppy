@@ -10,6 +10,10 @@ export type GeocodedLocation = Coordinates & {
 };
 
 const earthRadiusMiles = 3958.8;
+const defaultCoachRadiusMiles = 30;
+const staticGeocodingEnabled =
+  process.env.REPPY_ENABLE_STATIC_GEOCODING === "true" ||
+  process.env.NEXT_PUBLIC_REPPY_ENABLE_STATIC_GEOCODING === "true";
 
 const knownLocations: Record<string, GeocodedLocation> = {
   "02453": { city: "Waltham", state: "MA", zip_code: "02453", latitude: 42.3765, longitude: -71.2356 },
@@ -66,6 +70,10 @@ export function geocodeLocationInput(value: string): GeocodedLocation | null {
     return null;
   }
 
+  if (!staticGeocodingEnabled) {
+    return null;
+  }
+
   const zipCode = zipCodeFromLocationInput(normalized);
   if (zipCode && knownLocations[zipCode]) {
     return knownLocations[zipCode];
@@ -90,6 +98,11 @@ export function resolveCoachLocationFields({
   const cleanZip = zipCode?.trim() || zipCodeFromLocationInput(location);
   const query = cleanZip || [cleanCity, cleanState].filter(Boolean).join(" ") || location;
   const geocoded = geocodeLocationInput(query) ?? geocodeLocationInput(location);
+  const publicLocation =
+    [cleanCity || geocoded?.city, cleanState || geocoded?.state].filter(Boolean).join(", ") ||
+    cleanZip ||
+    location.trim() ||
+    null;
 
   return {
     city: cleanCity || geocoded?.city || null,
@@ -97,6 +110,7 @@ export function resolveCoachLocationFields({
     zip_code: cleanZip || geocoded?.zip_code || null,
     latitude: geocoded?.latitude ?? null,
     longitude: geocoded?.longitude ?? null,
+    public_location: publicLocation,
   };
 }
 
@@ -110,6 +124,26 @@ export function haversineMiles(from: Coordinates, to: Coordinates) {
     Math.cos(fromLat) * Math.cos(toLat) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
 
   return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function formatDistanceMiles(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  if (value < 0.1) {
+    return "Less than 0.1 miles away";
+  }
+
+  return `${value.toFixed(1)} miles away`;
+}
+
+export function coachSearchRadiusMiles(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return defaultCoachRadiusMiles;
+  }
+
+  return Math.min(value, defaultCoachRadiusMiles);
 }
 
 export function isValidCoordinates(value: {
@@ -130,7 +164,7 @@ export function isMissingCoachLocationColumnError(error: { message?: string; det
   }
 
   const text = `${error.message ?? ""} ${error.details ?? ""}`;
-  return /(city|state|zip_code|latitude|longitude)/i.test(text) && /(column|schema cache|not find)/i.test(text);
+  return /(city|state|zip_code|latitude|longitude|public_location|service_radius_miles)/i.test(text) && /(column|schema cache|not find)/i.test(text);
 }
 
 function toRadians(value: number) {

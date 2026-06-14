@@ -19,6 +19,15 @@ type TrainingRequestResponse =
       };
     };
 
+const requestErrorMessages: Record<string, string> = {
+  AUTH_REQUIRED: "Please sign in or create a Player/Parent Account before sending a training request.",
+  EMAIL_NOT_VERIFIED: "Verify your email before sending a training request.",
+  PHONE_NOT_VERIFIED: "Verify your phone before sending a training request.",
+  DUPLICATE_ACTIVE_REQUEST:
+    "You already have an active request with this coach. Open your Message Center to continue the conversation.",
+  RATE_LIMITED: "You are sending requests too quickly. Please wait and try again.",
+};
+
 export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?: string }) {
   const [state, setState] = useState<SubmissionState>("idle");
   const [error, setError] = useState("");
@@ -55,13 +64,7 @@ export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?
 
       if (!response.ok || !body?.success) {
         const code = body && !body.success ? body.error.code : "";
-        setError(
-          code === "AUTH_REQUIRED"
-            ? "Please sign in or create a Player/Parent Account before sending a training request."
-            : body && !body.success
-              ? body.error.message
-            : "Something went wrong. Please try again.",
-        );
+        setError(requestErrorMessages[code] ?? (body && !body.success ? body.error.message : "Something went wrong. Please try again."));
         setShowAuthLinks(code === "AUTH_REQUIRED");
         setState("error");
         return;

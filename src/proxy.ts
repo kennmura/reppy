@@ -10,6 +10,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
+  if (request.nextUrl.pathname === "/request-training") {
+    redirectUrl.pathname = "/coaches";
+    redirectUrl.search = "";
+    return NextResponse.redirect(redirectUrl);
+  }
+
   if (request.nextUrl.pathname === "/coach/login") {
     redirectUrl.pathname = "/account/login";
     redirectUrl.searchParams.set("role", "coach");

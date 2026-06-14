@@ -1,10 +1,12 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { kenProfile } from "./ken";
 import {
+  coachSearchRadiusMiles,
   geocodeLocationInput,
   haversineMiles,
   isMissingCoachLocationColumnError,
   isValidCoordinates,
+  normalizeLocationInput,
 } from "./location";
 import { sportMatches } from "./sports";
 import { createSupabaseAdminClient, hasSupabaseAdminConfig, hasSupabaseConfig } from "./supabase";
@@ -19,7 +21,9 @@ import type {
   ConversationSafeMetadata,
   ConversationThread,
   Message,
+  PremiumAccessGrant,
   PlayerRecord,
+  SavedCoach,
   TrainingRequest,
   UserCoachingPreference,
 } from "./types";
@@ -48,11 +52,13 @@ const publicCoachBaseFields = [
   "training_format",
   "general_availability",
   "location",
+  "public_location",
   "city",
   "state",
   "zip_code",
   "latitude",
   "longitude",
+  "service_radius_miles",
   "service_area",
   "pricing_text",
   "profile_photo_url",
@@ -69,22 +75,61 @@ const publicCoachBaseFields = [
   "updated_at",
 ];
 const legacyPublicCoachBaseFields = publicCoachBaseFields.filter(
-  (field) => !["city", "state", "zip_code", "latitude", "longitude"].includes(field),
+  (field) =>
+    ![
+      "city",
+      "state",
+      "zip_code",
+      "latitude",
+      "longitude",
+      "public_location",
+      "service_radius_miles",
+    ].includes(field),
 );
 const publicCoachSelect = publicCoachBaseFields.join(", ");
 const legacyPublicCoachSelect = legacyPublicCoachBaseFields.join(", ");
 
+function coachLocationText(coach: Coach) {
+  return [
+    coach.public_location,
+    [coach.city, coach.state].filter(Boolean).join(", "),
+    coach.zip_code,
+    coach.location,
+    coach.service_area,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function coachMatchesLocationText(coach: Coach, location: string) {
+  const normalizedNeedle = normalizeLocationInput(location);
+  const zipNeedle = location.match(/\b\d{5}(?:-\d{4})?\b/)?.[0].slice(0, 5) ?? "";
+  if (!normalizedNeedle && !zipNeedle) {
+    return true;
+  }
+
+  const normalizedHaystack = normalizeLocationInput(coachLocationText(coach));
+  return Boolean(
+    (zipNeedle && normalizedHaystack.includes(zipNeedle)) ||
+      (normalizedNeedle && normalizedHaystack.includes(normalizedNeedle)),
+  );
+}
+
 function filterAndSortByLocation(coaches: Coach[], location?: string | null) {
-  const origin = location ? geocodeLocationInput(location) : null;
+  const cleanLocation = location?.trim();
+  const origin = cleanLocation ? geocodeLocationInput(cleanLocation) : null;
+  if (!cleanLocation) {
+    return coaches;
+  }
+
   if (!origin) {
-    return location ? [] : coaches;
+    const textMatches = coaches.filter((coach) => coachMatchesLocationText(coach, cleanLocation));
+    return textMatches.length ? textMatches : coaches;
   }
 
   return coaches
     .map((coach) => {
-      const coachCoordinates = isValidCoordinates(coach)
-        ? coach
-        : geocodeLocationInput(coach.zip_code || coach.location || "");
+      const coachCoordinates = isValidCoordinates(coach) ? coach : null;
 
       if (!coachCoordinates) {
         return null;
@@ -95,8 +140,74 @@ function filterAndSortByLocation(coaches: Coach[], location?: string | null) {
         distance_miles: haversineMiles(origin, coachCoordinates),
       };
     })
-    .filter((coach): coach is Coach & { distance_miles: number } => Boolean(coach && coach.distance_miles <= 30))
+    .filter((coach): coach is Coach & { distance_miles: number } =>
+      Boolean(coach && coach.distance_miles <= coachSearchRadiusMiles(coach.service_radius_miles)),
+    )
     .sort((a, b) => a.distance_miles - b.distance_miles);
+}
+
+function trainingTypeTerms(trainingType?: string | null) {
+  switch (trainingType) {
+    case "private":
+      return ["private", "1 on 1", "1-on-1", "one on one", "one-on-one", "individual"];
+    case "small-group":
+      return ["small group", "small-group", "group", "clinic", "clinics"];
+    case "college-guidance":
+      return ["college", "recruiting", "recruit", "guidance", "prep"];
+    default:
+      return [];
+  }
+}
+
+function coachMatchesTrainingType(coach: Coach, trainingType?: string | null, services: CoachService[] = []) {
+  const terms = trainingTypeTerms(trainingType);
+  if (!terms.length) {
+    return true;
+  }
+
+  const text = [
+    coach.headline,
+    coach.bio,
+    coach.category,
+    coach.training_format,
+    coach.training_approach,
+    coach.skill_levels,
+    coach.positions,
+    ...services.flatMap((service) => [service.title, service.description, service.format, service.level]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return terms.some((term) => text.includes(term));
+}
+
+async function filterCoachesByTrainingType(coaches: Coach[], trainingType?: string | null) {
+  if (!trainingType || !coaches.length || !hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return coaches.filter((coach) =>
+      coachMatchesTrainingType(
+        coach,
+        trainingType,
+        coach.id === kenProfile.coach.id ? kenProfile.services : [],
+      ),
+    );
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const coachIds = coaches.map((coach) => coach.id);
+  const { data } = await supabase
+    .from("coach_services")
+    .select("id, coach_id, title, description, duration, price, format, level, sort_order, created_at, updated_at")
+    .in("coach_id", coachIds);
+  const servicesByCoach = new Map<string, CoachService[]>();
+
+  for (const service of (data ?? []) as CoachService[]) {
+    const existing = servicesByCoach.get(service.coach_id) ?? [];
+    existing.push(service);
+    servicesByCoach.set(service.coach_id, existing);
+  }
+
+  return coaches.filter((coach) => coachMatchesTrainingType(coach, trainingType, servicesByCoach.get(coach.id) ?? []));
 }
 
 export async function getCoachProfileBySlug(slug: string): Promise<CoachProfileData | null> {
@@ -176,15 +287,18 @@ async function getCoachProfileByCoach(coach: Coach): Promise<CoachProfileData> {
 export async function getPublishedCoaches({
   sport,
   location,
+  trainingType,
 }: {
   sport?: string | null;
   location?: string | null;
+  trainingType?: string | null;
 } = {}): Promise<Coach[]> {
   noStore();
 
   if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
     const coaches = sportMatches(kenProfile.coach.sport, sport ?? null) ? [kenProfile.coach] : [];
-    return filterAndSortByLocation(coaches, location);
+    const trainingMatches = await filterCoachesByTrainingType(coaches, trainingType);
+    return filterAndSortByLocation(trainingMatches, location);
   }
 
   const supabase = createSupabaseAdminClient();
@@ -213,14 +327,84 @@ export async function getPublishedCoaches({
   const coaches = ((data ?? []) as unknown as Coach[]).filter((coach) =>
     sportMatches(coach.sport, sport ?? null),
   );
-  const locationFilteredCoaches = filterAndSortByLocation(coaches, location);
+  const trainingFilteredCoaches = await filterCoachesByTrainingType(coaches, trainingType);
+  const locationFilteredCoaches = filterAndSortByLocation(trainingFilteredCoaches, location);
 
-  if (coaches.length) {
+  if (trainingFilteredCoaches.length) {
     return locationFilteredCoaches;
   }
 
   const fallbackCoaches = sportMatches(kenProfile.coach.sport, sport ?? null) ? [kenProfile.coach] : [];
-  return filterAndSortByLocation(fallbackCoaches, location);
+  const fallbackTrainingMatches = await filterCoachesByTrainingType(fallbackCoaches, trainingType);
+  return filterAndSortByLocation(fallbackTrainingMatches, location);
+}
+
+export async function getSavedCoachIdsForUser(userId: string, coachIds?: string[]) {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  let query = supabase.from("saved_coaches").select("coach_id").eq("user_id", userId);
+
+  if (coachIds?.length) {
+    query = query.in("coach_id", coachIds);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    return [];
+  }
+
+  return (data ?? []).map((row) => row.coach_id as string);
+}
+
+export async function getSavedCoachesForUser(userId: string): Promise<Coach[]> {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: saved, error: savedError } = await supabase
+    .from("saved_coaches")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (savedError || !saved?.length) {
+    return [];
+  }
+
+  const savedRows = saved as SavedCoach[];
+  const coachIds = savedRows.map((row) => row.coach_id);
+  const { data: coaches, error: coachesError } = await supabase
+    .from("coaches")
+    .select(publicCoachSelect)
+    .in("id", coachIds);
+
+  if (coachesError) {
+    return [];
+  }
+
+  const coachesById = new Map(((coaches ?? []) as unknown as Coach[]).map((coach) => [coach.id, coach]));
+  return savedRows.map((row) => coachesById.get(row.coach_id)).filter((coach): coach is Coach => Boolean(coach));
+}
+
+export async function getAdminPremiumAccessGrants(): Promise<PremiumAccessGrant[]> {
+  noStore();
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("premium_access_grants")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return [];
+  }
+
+  return (data ?? []) as PremiumAccessGrant[];
 }
 
 export async function getAdminTrainingRequests(): Promise<TrainingRequest[]> {

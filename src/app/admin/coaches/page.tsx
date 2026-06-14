@@ -33,7 +33,7 @@ export default async function AdminCoachesPage() {
                   <p className="mt-1 text-xs text-slate-500">/coaches/{coach.slug}</p>
                 </div>
                 <AdminValue label="Sport" value={coach.sport ?? "Not set"} />
-                <AdminValue label="Location" value={coach.location ?? coach.zip_code ?? "Not set"} />
+                <AdminValue label="Location" value={coach.public_location ?? coach.location ?? coach.zip_code ?? "Not set"} />
                 <div>
                   <MobileLabel>Status</MobileLabel>
                   <Badge>{coach.profile_status?.replaceAll("_", " ") ?? "draft"}</Badge>

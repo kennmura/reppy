@@ -42,6 +42,10 @@ VAPID_SUBJECT=mailto:your_email@example.com
 FREE_COACH_ALERT_EMAILS_ENABLED=false
 RESEND_API_KEY=
 ALERT_EMAIL_FROM=Reppy <notifications@yourdomain.com>
+
+FOUNDING_COACH_PLAN_CODE=founding_5
+PREMIUM_COACH_PLAN_CODE=premium_15
+REPPY_ENABLE_STATIC_GEOCODING=false
 ```
 
 4. Follow `SUPABASE_SETUP.md`.
@@ -64,6 +68,13 @@ npm run dev -- --hostname 127.0.0.1 --port 3002
 - Supabase Auth handles authentication emails.
 - Unsaved conversations expire 90 days after the most recent activity.
 
+## Coach Discovery
+
+- `/coaches` filters coaches by their listed sport, optional training type, and optional location.
+- Location search uses saved coach latitude/longitude only when a geocoding provider has resolved the search location.
+- `src/lib/location.ts` currently exposes a clean geocoding placeholder. Leave `REPPY_ENABLE_STATIC_GEOCODING=false` for production so the app does not show fake distances.
+- Player/parent users can save coaches from profile pages and see saved coaches in `/account/dashboard`.
+
 ## Routes
 
 Public:
@@ -84,6 +95,7 @@ Legacy redirects:
 - `/for-coaches` redirects to `/coach/register`
 - `/coach-register` redirects to `/coach/register`
 - `/coach/login` redirects to `/account/login?role=coach`
+- `/request-training` redirects to `/coaches`
 
 Coach Dashboard:
 
@@ -131,6 +143,8 @@ Admin:
 - `/admin/subscriptions`
 - `/admin/referrals`
 
+`/admin/subscriptions` includes manual beta/premium access grants for coaches before automated billing is fully connected.
+
 API:
 
 - `/api/training-requests`
@@ -147,4 +161,5 @@ API:
 npm run lint
 npm run typecheck
 npm run build
+npm run test:e2e
 ```

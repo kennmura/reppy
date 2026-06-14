@@ -108,28 +108,28 @@ export async function getAdminUserOrRedirect() {
 
 export async function getCoachUserOrRedirect() {
   if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
-    redirect("/coach/login?error=missing-supabase");
+    redirect("/account/login?error=missing-supabase");
   }
 
   const supabaseAuth = await createSupabaseServerClient();
   const { data } = await supabaseAuth.auth.getUser();
 
   if (!data.user) {
-    redirect("/coach/login");
+    redirect("/account/login");
   }
 
   const profile = await getApplicationProfile(data.user.id);
 
   if (!profile) {
-    redirect("/coach/login?error=no-profile");
+    redirect("/account/login?error=no-profile");
   }
 
   if (profile.role !== "coach" || !isActive(profile)) {
-    redirect("/coach/login?error=wrong-role");
+    redirect("/account/login?error=wrong-role");
   }
 
   if (!data.user.email_confirmed_at) {
-    redirect("/coach/login?error=verify-email");
+    redirect("/account/login?error=verify-email");
   }
 
   await syncVerifiedEmail(data.user.id, data.user.email_confirmed_at);

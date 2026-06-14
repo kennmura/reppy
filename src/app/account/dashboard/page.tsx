@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AccountShell } from "@/components/account/AccountShell";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { getAccountContextOrRedirect } from "@/lib/auth";
-import { getAccountConversations, getUserCoachingPreference } from "@/lib/data";
+import { getAccountConversations, getSavedCoachesForUser, getUserCoachingPreference } from "@/lib/data";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,7 @@ export default async function AccountDashboardPage() {
     getAccountConversations(user.id),
     getUserCoachingPreference(user.id),
   ]);
+  const savedCoaches = await getSavedCoachesForUser(user.id);
   const unreadMessages = conversations.reduce(
     (total, conversation) => total + Number(conversation.participant_unread_count ?? 0),
     0,
@@ -52,7 +53,7 @@ export default async function AccountDashboardPage() {
         <div className="grid gap-4 sm:grid-cols-3">
           <Metric label="Training requests" value={conversations.length} />
           <Metric label="Unread messages" value={unreadMessages} />
-          <Metric label="Saved sport" value={preference?.sport ?? "Not set"} />
+          <Metric label="Saved coaches" value={savedCoaches.length} />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -114,6 +115,32 @@ export default async function AccountDashboardPage() {
             )}
           </section>
         </div>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">Saved coaches</h2>
+          {savedCoaches.length ? (
+            <div className="mt-4 divide-y divide-slate-200">
+              {savedCoaches.slice(0, 5).map((coach) => (
+                <Link
+                  key={coach.id}
+                  href={`/coaches/${coach.slug}`}
+                  className="grid gap-1 py-3 hover:text-[#12355b]"
+                >
+                  <span className="font-semibold text-slate-950">{coach.full_name}</span>
+                  <span className="text-sm text-slate-600">
+                    {[coach.sport, coach.public_location || coach.location].filter(Boolean).join(" - ")}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              text="Save coaches from their profiles to compare options before you request training."
+              href="/coaches"
+              label="Find Coaches"
+            />
+          )}
+        </section>
 
         {!preference?.sport && !preference?.location_text ? (
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
