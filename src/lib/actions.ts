@@ -822,7 +822,7 @@ export async function createTrainingPaymentCheckout(formData: FormData) {
       })
       .eq("id", payment.id);
 
-    if (payment.training_request_id) {
+    if (payment.session_kind === "first_session" && payment.training_request_id) {
       await supabase
         .from("training_requests")
         .update({

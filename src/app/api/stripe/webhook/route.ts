@@ -496,7 +496,7 @@ async function markPaymentFromEvent(event: StripeEvent, status: "expired" | "fai
     return;
   }
 
-  if (payment.training_request_id) {
+  if (payment.session_kind === "first_session" && payment.training_request_id) {
     await supabase
       .from("training_requests")
       .update({ payment_status: status, updated_at: now })
