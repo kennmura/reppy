@@ -10,10 +10,10 @@ export function Footer() {
             Home
           </Link>
           <Link href="/coaches" className="hover:text-slate-950">
-            Coaches
+            Find Coaches
           </Link>
-          <Link href="/for-coaches" className="hover:text-slate-950">
-            For Coaches
+          <Link href="/account/login" className="hover:text-slate-950">
+            Sign In / Sign Up
           </Link>
           <Link href="/privacy" className="hover:text-slate-950">
             Privacy

@@ -3,20 +3,22 @@ import { getCoachContextOrRedirect } from "@/lib/auth";
 import { getCoachUnreadCount } from "@/lib/data";
 import { getMessageAccess } from "@/lib/entitlements";
 import { appUrl } from "@/lib/email";
+import { getUnreadNotificationCount } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 
 export default async function CoachReferralsPage() {
-  const { coach, coachUserId } = await getCoachContextOrRedirect();
-  const [access, unreadCount] = await Promise.all([
+  const { user, coach, coachUserId } = await getCoachContextOrRedirect();
+  const [access, unreadCount, notificationCount] = await Promise.all([
     getMessageAccess({ coach, coachUserId }),
-    getCoachUnreadCount(coach.id),
+    getCoachUnreadCount(coach.id, coachUserId),
+    getUnreadNotificationCount(user.id),
   ]);
   const referralCode = coach.referral_code || coach.slug.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
   const referralUrl = appUrl(`/signup/coach?ref=${referralCode}`);
 
   return (
-    <CoachShell unreadCount={unreadCount} access={access}>
+    <CoachShell userId={user.id} unreadCount={unreadCount} notificationCount={notificationCount} access={access}>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Referrals</h1>

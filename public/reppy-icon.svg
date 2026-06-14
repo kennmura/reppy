@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Reppy">
+  <rect width="192" height="192" rx="36" fill="#12355b"/>
+  <path d="M51 134V54h50c19 0 32 12 32 29 0 12-7 22-18 27l24 24h-27l-21-21H74v21H51Zm23-40h25c7 0 12-4 12-11s-5-11-12-11H74v22Z" fill="#ffffff"/>
+  <path d="M50 150h91" stroke="#78b69d" stroke-width="12" stroke-linecap="round"/>
+</svg>

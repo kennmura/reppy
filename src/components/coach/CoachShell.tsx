@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NotificationBell } from "@/components/NotificationBell";
 import { signOutCoach } from "@/lib/actions";
 import type { MessageAccess } from "@/lib/types";
 
@@ -6,18 +7,22 @@ const links = [
   { href: "/coach/dashboard", label: "Dashboard" },
   { href: "/coach/profile", label: "Profile" },
   { href: "/coach/messages", label: "Messages" },
-  { href: "/coach/players", label: "Players" },
-  { href: "/coach/billing", label: "Billing" },
-  { href: "/coach/referrals", label: "Referrals" },
+  { href: "/coach/messages?status=unread", label: "Requests" },
+  { href: "/coach/billing", label: "Billing / Subscription" },
+  { href: "/coach/settings/notifications", label: "Settings" },
 ];
 
 export function CoachShell({
   children,
+  userId,
   unreadCount,
+  notificationCount,
   access,
 }: {
   children: React.ReactNode;
+  userId: string;
   unreadCount: number;
+  notificationCount: number;
   access: MessageAccess;
 }) {
   return (
@@ -25,23 +30,26 @@ export function CoachShell({
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link href="/coach/dashboard" className="text-lg font-semibold text-slate-950">
-            Coach Centre
+            Coach Dashboard
           </Link>
-          <form action={signOutCoach}>
-            <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500">
-              Sign out
-            </button>
-          </form>
+          <div className="flex items-center gap-2">
+            <NotificationBell userId={userId} initialCount={notificationCount} href="/coach/notifications" />
+            <form action={signOutCoach}>
+              <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500">
+                Sign out
+              </button>
+            </form>
+          </div>
         </div>
       </header>
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[220px_1fr] lg:px-8">
         <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-          <nav className="grid gap-1">
+          <nav className="flex flex-wrap gap-1 lg:grid">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="flex items-center justify-between whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 <span>{link.label}</span>
                 {link.label === "Messages" && unreadCount ? (
@@ -54,7 +62,7 @@ export function CoachShell({
           </nav>
           <div className="mt-4 rounded-md bg-[#f7f8f3] p-3 text-xs leading-5 text-slate-600">
             <p className="font-semibold text-slate-950">
-              {access.hasAccess ? "Messaging active" : "Message Centre locked"}
+              {access.hasAccess ? "Messaging active" : "Message Center locked"}
             </p>
             <p className="mt-1">
               {access.hasAccess

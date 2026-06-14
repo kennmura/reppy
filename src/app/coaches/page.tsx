@@ -2,15 +2,23 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { CoachCard } from "@/components/CoachCard";
 import { getPublishedCoaches } from "@/lib/data";
-import { sports } from "@/lib/sports";
+import { geocodeLocationInput } from "@/lib/location";
+import { sports, sportFromSlug, sportToSlug } from "@/lib/sports";
 
 export default async function CoachesPage({
   searchParams,
 }: {
   searchParams: Promise<{ sport?: string; location?: string; training_type?: string }>;
 }) {
-  const coaches = await getPublishedCoaches();
   const params = await searchParams;
+  const selectedSport = sportFromSlug(params.sport);
+  const selectedSportSlug = selectedSport ? sportToSlug(selectedSport) : "";
+  const location = params.location?.trim() ?? "";
+  const canFilterByLocation = !location || Boolean(geocodeLocationInput(location));
+  const hasFilters = Boolean(selectedSportSlug || location || params.training_type);
+  const coaches = params.sport && !selectedSport
+    ? []
+    : await getPublishedCoaches({ sport: selectedSport, location: canFilterByLocation ? location : null });
 
   return (
     <main className="bg-[#f7f8f3] py-14">
@@ -21,18 +29,19 @@ export default async function CoachesPage({
               Coach Directory
             </p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">
-              Find local sports coaching
+              Find Coaches
             </h1>
             <p className="mt-4 text-lg leading-8 text-slate-700">
-              Starting with private soccer training in Greater Boston, built to grow into a broader
-              local coach directory.
+              {selectedSport
+                ? `Search private ${selectedSport.toLowerCase()} coaches by location and training style.`
+                : "Search private coaches by sport, location, and training style."}
             </p>
           </div>
           <Link
-            href="/coach-register"
+            href="/coach/register"
             className="inline-flex w-full items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948] sm:w-fit"
           >
-            Get on the coaching radar
+            Create Coach Account
           </Link>
         </div>
         <form
@@ -43,12 +52,12 @@ export default async function CoachesPage({
             Sport
             <select
               name="sport"
-              defaultValue={params.sport ?? ""}
+              defaultValue={selectedSportSlug}
               className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950"
             >
               <option value="">All sports</option>
               {sports.map((sport) => (
-                <option key={sport} value={sport.toLowerCase().replaceAll(" ", "-")}>
+                <option key={sport} value={sportToSlug(sport)}>
                   {sport}
                 </option>
               ))}
@@ -58,7 +67,7 @@ export default async function CoachesPage({
             Location
             <input
               name="location"
-              defaultValue={params.location ?? ""}
+              defaultValue={location}
               placeholder="City, town, or ZIP code"
               className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950"
             />
@@ -80,12 +89,46 @@ export default async function CoachesPage({
             <Search className="h-4 w-4" />
             Search
           </button>
+          <div className="flex flex-col gap-2 text-sm leading-6 text-slate-600 md:col-span-4 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Enter your ZIP code or location to find coaches within 30 miles.
+            </p>
+            {hasFilters ? (
+              <Link href="/coaches" className="font-semibold text-[#12355b] hover:text-[#0d2948]">
+                Clear filters
+              </Link>
+            ) : null}
+          </div>
         </form>
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {coaches.map((coach) => (
-            <CoachCard key={coach.id} coach={coach} />
-          ))}
-        </div>
+        {location && !canFilterByLocation ? (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+            Location search is being improved. Showing matching coaches based on available profile
+            information.
+          </div>
+        ) : null}
+        {coaches.length ? (
+          <div className="mt-8 grid gap-5 md:grid-cols-2">
+            {coaches.map((coach) => (
+              <CoachCard key={coach.id} coach={coach} />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-8 rounded-lg border border-slate-200 bg-white p-8 text-slate-700 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-950">
+              No {selectedSport ?? "matching"} coaches yet
+            </h2>
+            <p className="mt-2 leading-7">
+              Try clearing filters or choosing another sport. Coaches only appear in a sport search
+              when their profile lists that sport.
+            </p>
+            <Link
+              href="/coaches"
+              className="mt-5 inline-flex rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 hover:border-slate-500"
+            >
+              Clear filters
+            </Link>
+          </div>
+        )}
       </div>
     </main>
   );

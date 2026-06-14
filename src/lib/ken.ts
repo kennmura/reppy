@@ -13,10 +13,16 @@ export const kenProfile: CoachProfileData = {
     sport: "Soccer",
     category: "Soccer Training",
     headline: "Private Soccer Training in Greater Boston",
+    current_affiliation: "Brandeis University Men's Soccer Student-Athlete",
     bio: `My name is Kenshin Murakawa, and I am a student-athlete at Brandeis University studying Economics and Computer Science. I currently play for the Brandeis Men's Soccer team and have experience as a long-time starter, captain, and competitive player across club and college environments.
 
 I offer private soccer training for local players who want to improve their technical ability, confidence, decision-making, and understanding of the game.`,
     location: "Greater Boston / Middlesex County",
+    city: "Waltham",
+    state: "MA",
+    zip_code: "02453",
+    latitude: 42.3765,
+    longitude: -71.2356,
     service_area:
       "Watertown, Newton, Waltham, Lexington, Cambridge, Belmont, Boston, and nearby areas.",
     pricing_text: "Pricing available upon request.",

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { AdminLayout } from "@/components/AdminLayout";
-import { updateCoach } from "@/lib/actions";
+import { updateCoach, updateCoachApprovalStatus } from "@/lib/actions";
 import { getAdminUserOrRedirect } from "@/lib/auth";
 import { getAdminCoachProfileById } from "@/lib/data";
 import { sports } from "@/lib/sports";
@@ -39,6 +39,66 @@ export default async function AdminCoachEditPage({ params }: { params: Promise<{
         <p className="mt-2 text-slate-600">
           Update the public profile, photos, bio, and services shown on the coach page.
         </p>
+        <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="grid gap-4 md:grid-cols-[1fr_1.2fr]">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">Review status</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Current status:{" "}
+                <span className="font-semibold capitalize text-slate-950">
+                  {coach.profile_status?.replaceAll("_", " ") ?? "draft"}
+                </span>
+              </p>
+              {coach.submitted_at ? (
+                <p className="mt-1 text-sm text-slate-600">
+                  Submitted {new Date(coach.submitted_at).toLocaleDateString()}
+                </p>
+              ) : null}
+            </div>
+            <form action={updateCoachApprovalStatus} className="grid gap-3">
+              <input type="hidden" name="id" value={coach.id} />
+              <label className="text-sm font-medium text-slate-800">
+                Review notes
+                <textarea
+                  name="review_notes"
+                  defaultValue={coach.review_notes ?? ""}
+                  rows={3}
+                  className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#12355b] focus:ring-2 focus:ring-[#12355b]/15"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  name="decision"
+                  value="approved"
+                  className="rounded-md bg-[#12355b] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0d2948]"
+                >
+                  Approve and publish
+                </button>
+                <button
+                  name="decision"
+                  value="changes_requested"
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:border-slate-500"
+                >
+                  Request changes
+                </button>
+                <button
+                  name="decision"
+                  value="rejected"
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:border-slate-500"
+                >
+                  Reject
+                </button>
+                <button
+                  name="decision"
+                  value="suspended"
+                  className="rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:border-red-400"
+                >
+                  Suspend
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
         <form
           action={updateCoach}
           className="mt-6 grid gap-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"

@@ -10,24 +10,33 @@ export function CoachApplicationForm() {
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setState("loading");
-
-    const formData = new FormData(event.currentTarget);
-    const payload = Object.fromEntries(formData.entries());
-
-    const response = await fetch("/api/coach-applications", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      setState("error");
+    if (state === "loading") {
       return;
     }
 
-    event.currentTarget.reset();
-    setState("success");
+    const form = event.currentTarget;
+    setState("loading");
+
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+
+    try {
+      const response = await fetch("/api/coach-applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        setState("error");
+        return;
+      }
+
+      form.reset();
+      setState("success");
+    } catch {
+      setState("error");
+    }
   }
 
   return (

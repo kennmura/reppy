@@ -9,6 +9,8 @@ export function ConversationRow({
   conversation: ConversationSafeMetadata;
   access: MessageAccess;
 }) {
+  const unreadCount = conversation.participant_unread_count ?? (conversation.is_unread_by_coach ? 1 : 0);
+
   return (
     <Link
       href={`/coach/messages/${conversation.id}`}
@@ -24,9 +26,9 @@ export function ConversationRow({
           <h2 className="font-semibold text-slate-950">
             {access.hasAccess ? "Training request" : "Locked training request"}
           </h2>
-          {conversation.is_unread_by_coach ? (
+          {unreadCount > 0 ? (
             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
-              unread
+              {unreadCount} unread
             </span>
           ) : null}
           {conversation.is_saved ? <Star className="h-4 w-4 text-amber-500" /> : null}

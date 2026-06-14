@@ -2,40 +2,87 @@
 
 import { useState } from "react";
 
-type FormState = "idle" | "loading" | "success" | "error";
+type SubmissionState = "idle" | "submitting" | "success" | "error";
+
+type TrainingRequestResponse =
+  | {
+      success: true;
+      requestId: string;
+      conversationId: string;
+    }
+  | {
+      success: false;
+      error: {
+        code: string;
+        message: string;
+        fields?: Record<string, string>;
+      };
+    };
 
 export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?: string }) {
-  const [state, setState] = useState<FormState>("idle");
+  const [state, setState] = useState<SubmissionState>("idle");
+  const [error, setError] = useState("");
+  const [showAuthLinks, setShowAuthLinks] = useState(false);
+  const [conversationId, setConversationId] = useState("");
+  const [clientRequestId, setClientRequestId] = useState(() => crypto.randomUUID());
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setState("loading");
-
-    const formData = new FormData(event.currentTarget);
-    const payload = Object.fromEntries(formData.entries());
-
-    const response = await fetch("/api/training-requests", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, coach_slug: coachSlug }),
-    });
-
-    if (!response.ok) {
-      setState("error");
+    if (state === "submitting") {
       return;
     }
 
-    event.currentTarget.reset();
-    setState("success");
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+
+    setState("submitting");
+    setError("");
+    setShowAuthLinks(false);
+    setConversationId("");
+
+    try {
+      const response = await fetch("/api/training-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, coach_slug: coachSlug, client_request_id: clientRequestId }),
+      });
+
+      const contentType = response.headers.get("content-type") ?? "";
+      const body = contentType.includes("application/json")
+        ? ((await response.json().catch(() => null)) as TrainingRequestResponse | null)
+        : null;
+
+      if (!response.ok || !body?.success) {
+        const code = body && !body.success ? body.error.code : "";
+        setError(
+          code === "AUTH_REQUIRED"
+            ? "Please sign in or create a Player/Parent Account before sending a training request."
+            : body && !body.success
+              ? body.error.message
+            : "Something went wrong. Please try again.",
+        );
+        setShowAuthLinks(code === "AUTH_REQUIRED");
+        setState("error");
+        return;
+      }
+
+      form.reset();
+      setConversationId(body.conversationId);
+      setClientRequestId(crypto.randomUUID());
+      setState("success");
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+      setState("error");
+    }
   }
 
   return (
     <form onSubmit={onSubmit} className="grid gap-5">
       <input type="hidden" name="coach_slug" value={coachSlug} />
+      <input type="hidden" name="client_request_id" value={clientRequestId} />
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Parent/player name" name="name" required />
-        <Field label="Email" name="email" type="email" required />
-        <Field label="Phone number" name="phone" />
+        <Field label="Player/parent name" name="name" required />
         <Field label="Player age" name="player_age" required />
         <Field label="Current level/team" name="current_level" />
         <Field label="Preferred location" name="preferred_location" />
@@ -47,32 +94,53 @@ export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?
       <label className="flex gap-3 rounded-md border border-[#d7e5dc] bg-[#f3f8f5] px-4 py-3 text-sm leading-6 text-slate-700">
         <input name="guardian_confirmed" type="checkbox" required className="mt-1 h-4 w-4" />
         <span>
-          I confirm that a parent or guardian is involved in this training request and related
-          communication.
+          For athletes under 18, a parent or guardian must be involved in all training communication
+          and scheduling.
         </span>
       </label>
-      <p className="rounded-md border border-[#d7e5dc] bg-[#f3f8f5] px-4 py-3 text-sm leading-6 text-slate-700">
-        For players under 18, a parent or guardian should be involved in all training communication
-        and scheduling.
-      </p>
+      <label className="flex gap-3 rounded-md border border-[#d7e5dc] bg-[#f3f8f5] px-4 py-3 text-sm leading-6 text-slate-700">
+        <input name="terms_confirmed" type="checkbox" required className="mt-1 h-4 w-4" />
+        <span>I agree to use Reppy messaging for training communication.</span>
+      </label>
       <button
         type="submit"
-        disabled={state === "loading"}
+        disabled={state === "submitting"}
         className="inline-flex w-full items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948] disabled:cursor-not-allowed disabled:opacity-70 sm:w-fit"
       >
-        {state === "loading" ? "Sending..." : "Request Training"}
+        {state === "submitting" ? "Sending request..." : "Request Training"}
       </button>
-      {state === "success" ? (
-        <p className="text-sm font-medium text-[#2f6f5e]">
-          Your request has been sent to the coach&apos;s Message Centre. You&apos;ll receive an email when
-          the coach replies.
-        </p>
-      ) : null}
-      {state === "error" ? (
-        <p className="text-sm font-medium text-red-700">
-          Something went wrong. Please try again.
-        </p>
-      ) : null}
+      <div aria-live="polite">
+        {state === "success" ? (
+          <div className="grid gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <p className="font-medium">
+              Your request was sent. You can continue the conversation in your Message Center.
+            </p>
+            {conversationId ? (
+              <a
+                href={`/account/messages/${conversationId}`}
+                className="inline-flex w-fit rounded-md bg-[#12355b] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0d2948]"
+              >
+                Open Message Center
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+        {state === "error" ? (
+          <div className="grid gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <p className="font-medium">{error}</p>
+            {showAuthLinks ? (
+              <div className="flex flex-wrap gap-3">
+                <a href="/account/login" className="font-semibold text-[#12355b]">
+                  Sign in
+                </a>
+                <a href="/account/register" className="font-semibold text-[#12355b]">
+                  Create Player/Parent Account
+                </a>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </form>
   );
 }

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { appUrl, sendPlatformEmail } from "@/lib/email";
+import { sendPushNotificationToUser } from "@/lib/push";
+import { sportFromSlug, sportToSlug } from "@/lib/sports";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 
 function authorized(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
-    return true;
+    return false;
   }
   return request.headers.get("authorization") === `Bearer ${secret}`;
 }
@@ -31,45 +32,56 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let sent = 0;
+  let notified = 0;
   for (const conversation of conversations ?? []) {
-    const { data: details } = await supabase
-      .from("conversation_private_details")
-      .select("requester_email")
+    const { data: participants } = await supabase
+      .from("conversation_participants")
+      .select("user_id")
       .eq("conversation_id", conversation.id)
-      .maybeSingle<{ requester_email: string | null }>();
-
-    if (!details?.requester_email) {
-      continue;
-    }
+      .in("role", ["parent", "player", "guardian"]);
 
     const search = new URLSearchParams();
-    if (conversation.sport) {
-      search.set("sport", conversation.sport.toLowerCase().replaceAll(" ", "-"));
+    const sport = sportFromSlug(conversation.sport);
+    if (sport) {
+      search.set("sport", sportToSlug(sport));
     }
     if (conversation.general_location) {
       search.set("location", conversation.general_location);
     }
 
-    await sendPlatformEmail({
-      to: details.requester_email,
-      subject: "No response to your training request yet",
-      body: [
-        "We have not received a response to your training request yet.",
-        "",
-        "You can keep this request open or explore other local coaches who may be a good fit.",
-      ].join("\n"),
-      ctaLabel: "Browse Other Coaches",
-      ctaUrl: appUrl(`/coaches?${search.toString()}`),
-    });
+    const actionUrl = `/coaches?${search.toString()}`;
+
+    for (const participant of participants ?? []) {
+      if (!participant.user_id) {
+        continue;
+      }
+
+      await supabase.from("notifications").insert({
+        user_id: participant.user_id,
+        type: "request_unanswered",
+        title: "Your coach has not responded yet",
+        body: "You can keep the request open or explore other local coaches.",
+        related_conversation_id: conversation.id,
+        action_url: actionUrl,
+        is_read: false,
+      });
+
+      await sendPushNotificationToUser(participant.user_id, {
+        title: "Your coach has not responded yet",
+        body: "You can keep the request open or explore other local coaches.",
+        url: actionUrl,
+        tag: `request-unanswered-${conversation.id}`,
+      });
+
+      notified += 1;
+    }
 
     await supabase
       .from("conversations")
       .update({ parent_follow_up_sent_at: new Date().toISOString() })
       .eq("id", conversation.id)
       .is("parent_follow_up_sent_at", null);
-    sent += 1;
   }
 
-  return NextResponse.json({ ok: true, sent });
+  return NextResponse.json({ ok: true, notified });
 }

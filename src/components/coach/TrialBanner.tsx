@@ -23,7 +23,7 @@ export function TrialBanner({ access }: { access: MessageAccess }) {
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <p className="font-semibold text-slate-950">Start your seven-day premium trial</p>
       <p className="mt-2 text-sm leading-6 text-slate-600">
-        Unlock full Message Centre access, replies, conversation history, and player records.
+        Unlock full Message Center access, replies, conversation history, and player records.
       </p>
       <form action={activateCoachTrial} className="mt-4">
         <button className="rounded-md bg-[#12355b] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0d2948]">

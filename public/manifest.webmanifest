@@ -1,0 +1,18 @@
+{
+  "name": "Reppy",
+  "short_name": "Reppy",
+  "description": "Local sports coaching requests and Message Centre alerts.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#12355b",
+  "icons": [
+    {
+      "src": "/reppy-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,6 +1,15 @@
 import Link from "next/link";
 import { CheckCircle2, Search, ShieldCheck } from "lucide-react";
-import { sports } from "@/lib/sports";
+import { CoachCard } from "@/components/CoachCard";
+import { getPublishedCoaches } from "@/lib/data";
+import { sports, sportToSlug } from "@/lib/sports";
+
+const trustPoints = [
+  "Verified coach profiles",
+  "Parent-safe messaging",
+  "Local private training",
+  "Free to browse",
+];
 
 const browseSports = [
   "Soccer",
@@ -12,6 +21,8 @@ const browseSports = [
 ];
 
 export default async function Home() {
+  const featuredCoaches = (await getPublishedCoaches()).slice(0, 6);
+
   return (
     <main>
       <section className="bg-[#f7f8f3]">
@@ -21,23 +32,23 @@ export default async function Home() {
               Local Sports Coaching
             </p>
             <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-              Find the Right Coach. Improve Your Game.
+              Find trusted private coaches near you.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-700">
-              Discover local coaches offering private and small-group training across the Northeast.
+              Search local coaches, view profiles, and request private training in minutes.
             </p>
             <div className="mt-8 grid gap-3 sm:flex">
               <Link
                 href="/coaches"
                 className="inline-flex items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948]"
               >
-                Browse Coaches
+                Find Coaches
               </Link>
               <Link
-                href="#for-coaches"
+                href="/coach/register"
                 className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-950 hover:border-slate-500"
               >
-                Create a Coaching Profile
+                Join as a Coach
               </Link>
             </div>
           </div>
@@ -47,80 +58,67 @@ export default async function Home() {
               aria-label="Local sports coach training a youth athlete"
               className="h-64 overflow-hidden rounded-md bg-[url('/images/soccer-training-hero.png')] bg-cover bg-center sm:h-80"
             />
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-md border border-slate-200 bg-white p-4">
-                <p className="text-sm font-semibold text-slate-950">Coach profiles</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Background, training services, service areas, pricing notes, and profile photos.
-                </p>
-              </div>
-              <div className="rounded-md border border-slate-200 bg-[#f7f8f3] p-4">
-                <p className="text-sm font-semibold text-slate-950">Built for local discovery</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Parents browse for free and send requests into each coach&apos;s Message Centre.
-                </p>
-              </div>
-            </div>
+            <form action="/coaches" className="mt-4 grid gap-3">
+              <label className="text-sm font-medium text-slate-800">
+                Sport
+                <select
+                  name="sport"
+                  className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950"
+                >
+                  <option value="">Any sport</option>
+                  {sports.map((sport) => (
+                    <option key={sport} value={sportToSlug(sport)}>
+                      {sport}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm font-medium text-slate-800">
+                Location / ZIP
+                <input
+                  name="location"
+                  placeholder="City, town, or ZIP code"
+                  className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950"
+                />
+              </label>
+              <button className="inline-flex items-center justify-center gap-2 rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948]">
+                <Search className="h-4 w-4" />
+                Search Coaches
+              </button>
+            </form>
           </div>
         </div>
       </section>
 
-      <section className="bg-white py-8">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <form
-            action="/coaches"
-            className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_1fr_1fr_auto]"
-          >
-            <label className="text-sm font-medium text-slate-800">
-              Sport
-              <select
-                name="sport"
-                className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950"
-              >
-                <option value="">Any sport</option>
-                {sports.map((sport) => (
-                  <option key={sport} value={sport.toLowerCase().replaceAll(" ", "-")}>
-                    {sport}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-medium text-slate-800">
-              Location
-              <input
-                name="location"
-                placeholder="City, town, or ZIP code"
-                className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-800">
-              Training type
-              <select
-                name="training_type"
-                className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950"
-              >
-                <option value="">Any training</option>
-                <option value="private">Private training</option>
-                <option value="small-group">Small group</option>
-                <option value="college-guidance">College guidance</option>
-              </select>
-            </label>
-            <button className="inline-flex items-center justify-center gap-2 rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948] md:self-end">
-              <Search className="h-4 w-4" />
-              Search Coaches
-            </button>
-          </form>
+      <section className="border-y border-slate-200 bg-white py-5">
+        <div className="mx-auto grid max-w-6xl gap-3 px-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
+          {trustPoints.map((point) => (
+            <div key={point} className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <ShieldCheck className="h-4 w-4 text-[#2f6f5e]" />
+              {point}
+            </div>
+          ))}
         </div>
       </section>
 
       <section className="bg-white py-16">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-950">Browse by Sport</h2>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-3xl font-semibold tracking-tight text-slate-950">Browse by Sport</h2>
+              <p className="mt-3 max-w-2xl text-slate-700">
+                Start with a sport, then narrow by location and training style.
+              </p>
+            </div>
+            <Link href="/coaches" className="text-sm font-semibold text-[#12355b] hover:text-[#0d2948]">
+              View all coaches
+            </Link>
+          </div>
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {browseSports.map((sport) => (
               <Link
                 key={sport}
-                href={`/coaches?sport=${encodeURIComponent(sport.toLowerCase().replaceAll(" ", "-"))}`}
+                href={`/coaches?sport=${sportToSlug(sport)}`}
                 className="rounded-lg border border-slate-200 bg-[#f7f8f3] p-5 text-sm font-semibold text-slate-950 hover:border-slate-400"
               >
                 {sport}
@@ -132,55 +130,65 @@ export default async function Home() {
 
       <section className="bg-[#f7f8f3] py-16">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-950">How It Works</h2>
-          <p className="mt-3 max-w-2xl text-slate-700">
-            Browsing coaches and requesting training are free for parents and players.
-          </p>
+          <h2 className="text-3xl font-semibold tracking-tight text-slate-950">How it works</h2>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <Step number="1" title="Explore Local Coaches" body="Browse coaches by sport, location, experience, and training style." />
-            <Step number="2" title="Review Their Profile" body="Learn about their background, services, location, and approach to training." />
-            <Step number="3" title="Request Training" body="Send the coach a training request directly through their profile." />
+            <Step number="1" title="Search nearby coaches" body="Filter by sport, location, and training style." />
+            <Step number="2" title="View profiles and services" body="Compare experience, age groups, pricing notes, and availability." />
+            <Step number="3" title="Send a training request" body="Use a Player/Parent Account to start a private conversation." />
           </div>
         </div>
       </section>
 
       <section className="bg-white py-16">
-        <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 md:grid-cols-[0.8fr_1.2fr] lg:px-8">
-          <div>
-            <ShieldCheck className="h-8 w-8 text-[#2f6f5e]" />
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-              Designed for Clear, Safe Communication
-            </h2>
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6f5e]">
+                Featured Coaches
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                Start with trusted local profiles
+              </h2>
+            </div>
+            <Link href="/coaches" className="text-sm font-semibold text-[#12355b] hover:text-[#0d2948]">
+              Find Coaches
+            </Link>
           </div>
-          <p className="text-lg leading-8 text-slate-700">
-            Coach profiles explain training services, experience, service areas, and request
-            options. For athletes under 18, a parent or guardian should be involved in all training
-            communication and scheduling.
-          </p>
+          {featuredCoaches.length ? (
+            <div className="mt-8 grid gap-5 md:grid-cols-2">
+              {featuredCoaches.map((coach) => (
+                <CoachCard key={coach.id} coach={coach} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No published coaches yet"
+              body="Coach profiles will appear here after they are reviewed and published."
+              href="/coach/register"
+              label="Create Coach Account"
+            />
+          )}
         </div>
       </section>
 
-      <section id="for-coaches" className="bg-[#f7f8f3] py-16">
+      <section className="bg-[#f7f8f3] py-16">
         <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 md:grid-cols-[1fr_0.8fr] lg:px-8">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6f5e]">
-              For Coaches
+              Coach Accounts
             </p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-              Grow Your Private Coaching Business
+              Coach on your terms.
             </h2>
             <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-700">
-              Create a professional public profile, showcase your training services, and get
-              discovered by local parents and players.
+              Build a profile, receive requests, and manage conversations in one place.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               {[
                 "Professional public coach profile",
-                "Personal profile URL",
-                "Service and pricing information",
-                "Headshot and cover photo",
-                "Message Centre training requests",
-                "Visibility in the public coach directory",
+                "Services, pricing, and availability",
+                "Photo and cover image editing",
+                "Message Center training requests",
               ].map((benefit) => (
                 <p key={benefit} className="flex items-center gap-2 text-sm font-medium text-slate-700">
                   <CheckCircle2 className="h-4 w-4 text-[#2f6f5e]" />
@@ -191,17 +199,17 @@ export default async function Home() {
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6f5e]">
-              Founding Coach Plan
+              Coach Dashboard
             </p>
             <p className="mt-4 text-4xl font-semibold text-slate-950">$5 per month</p>
             <p className="mt-4 leading-7 text-slate-700">
-              Available to the first five coaches during the initial launch.
+              Founding coach pricing is available during the first launch phase.
             </p>
             <Link
-              href="/coach-register"
+              href="/coach/register"
               className="mt-6 inline-flex w-full items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948]"
             >
-              Create Your Profile
+              Create Coach Account
             </Link>
           </div>
         </div>
@@ -210,25 +218,17 @@ export default async function Home() {
       <section className="bg-white py-16">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
           <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
-            Ready to Start Training?
+            Ready to find your next coach?
           </h2>
           <p className="mt-4 text-lg leading-8 text-slate-700">
-            Explore local coaches and find the right fit for your goals.
+            Browse local private coaches and request training when you find the right fit.
           </p>
-          <div className="mt-8 grid gap-3 sm:flex sm:justify-center">
-            <Link
-              href="/coaches"
-              className="inline-flex items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948]"
-            >
-              Browse Coaches
-            </Link>
-            <Link
-              href="/coach-register"
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-950 hover:border-slate-500"
-            >
-              Join as a Coach
-            </Link>
-          </div>
+          <Link
+            href="/coaches"
+            className="mt-8 inline-flex items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948]"
+          >
+            Find Coaches
+          </Link>
         </div>
       </section>
     </main>
@@ -241,6 +241,31 @@ function Step({ number, title, body }: { number: string; title: string; body: st
       <p className="text-sm font-semibold text-[#2f6f5e]">Step {number}</p>
       <h3 className="mt-3 text-xl font-semibold text-slate-950">{title}</h3>
       <p className="mt-3 leading-7 text-slate-700">{body}</p>
+    </div>
+  );
+}
+
+function EmptyState({
+  title,
+  body,
+  href,
+  label,
+}: {
+  title: string;
+  body: string;
+  href: string;
+  label: string;
+}) {
+  return (
+    <div className="mt-8 rounded-lg border border-slate-200 bg-white p-8 text-slate-700 shadow-sm">
+      <h3 className="text-xl font-semibold text-slate-950">{title}</h3>
+      <p className="mt-2 leading-7">{body}</p>
+      <Link
+        href={href}
+        className="mt-5 inline-flex rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 hover:border-slate-500"
+      >
+        {label}
+      </Link>
     </div>
   );
 }

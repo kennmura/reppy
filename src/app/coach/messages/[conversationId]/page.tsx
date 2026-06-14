@@ -6,10 +6,13 @@ import {
   updateConversationStatus,
 } from "@/lib/actions";
 import { CoachShell } from "@/components/coach/CoachShell";
+import { RealtimeRefresh } from "@/components/RealtimeRefresh";
+import { PendingSubmitButton } from "@/components/PendingSubmitButton";
 import { TrialBanner } from "@/components/coach/TrialBanner";
 import { getCoachContextOrRedirect } from "@/lib/auth";
 import { getCoachConversationThread, getCoachUnreadCount } from "@/lib/data";
 import { getMessageAccess } from "@/lib/entitlements";
+import { getUnreadNotificationCount } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +23,16 @@ export default async function CoachMessageThreadPage({
 }: {
   params: Promise<{ conversationId: string }>;
 }) {
-  const { coach, coachUserId } = await getCoachContextOrRedirect();
+  const { user, coach, coachUserId } = await getCoachContextOrRedirect();
   const { conversationId } = await params;
-  const [access, unreadCount] = await Promise.all([
+  const [access, unreadCount, notificationCount] = await Promise.all([
     getMessageAccess({ coach, coachUserId }),
-    getCoachUnreadCount(coach.id),
+    getCoachUnreadCount(coach.id, coachUserId),
+    getUnreadNotificationCount(user.id),
   ]);
   const thread = await getCoachConversationThread({
     coachId: coach.id,
+    coachUserId,
     conversationId,
     includePrivate: access.hasAccess,
   });
@@ -38,13 +43,18 @@ export default async function CoachMessageThreadPage({
 
   if (!access.hasAccess) {
     return (
-      <CoachShell unreadCount={unreadCount} access={access}>
+      <CoachShell userId={user.id} unreadCount={unreadCount} notificationCount={notificationCount} access={access}>
+        <RealtimeRefresh userId={user.id} conversationId={conversationId} />
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
             This training request is waiting for you.
           </h1>
           <p className="mt-3 max-w-2xl text-slate-700">
             Start your seven-day trial or upgrade to view the full request and respond.
+          </p>
+          <p className="mt-3 max-w-2xl text-sm text-slate-600">
+            Unsaved conversations are deleted 90 days after their most recent activity. Opening a
+            locked preview does not mark this request read.
           </p>
           <div className="mt-6 grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
             <Meta label="Sport" value={thread.conversation.sport} />
@@ -66,7 +76,8 @@ export default async function CoachMessageThreadPage({
   }
 
   return (
-    <CoachShell unreadCount={unreadCount} access={access}>
+    <CoachShell userId={user.id} unreadCount={unreadCount} notificationCount={notificationCount} access={access}>
+      <RealtimeRefresh userId={user.id} conversationId={conversationId} />
       <div className="space-y-4">
         <TrialBanner access={access} />
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -93,6 +104,10 @@ export default async function CoachMessageThreadPage({
             <Meta label="Preferred days/times" value={thread.privateDetails?.preferred_days_times} />
             <Meta label="Guardian" value={thread.privateDetails?.guardian_name} />
           </div>
+          <p className="mt-5 rounded-md bg-[#f7f8f3] px-4 py-3 text-sm leading-6 text-slate-700">
+            Unsaved conversations are deleted 90 days after their most recent activity. Save this
+            conversation if you need to preserve it longer.
+          </p>
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -120,9 +135,11 @@ export default async function CoachMessageThreadPage({
                 className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#12355b] focus:ring-2 focus:ring-[#12355b]/15"
               />
             </label>
-            <button className="w-fit rounded-md bg-[#12355b] px-4 py-2.5 text-sm font-semibold text-white">
-              Send reply
-            </button>
+            <PendingSubmitButton
+              idleLabel="Send reply"
+              pendingLabel="Sending..."
+              className="w-fit rounded-md bg-[#12355b] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+            />
           </form>
           <div className="space-y-3">
             <form action={updateConversationStatus} className="grid gap-2">
@@ -141,15 +158,19 @@ export default async function CoachMessageThreadPage({
                   ))}
                 </select>
               </label>
-              <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
-                Update status
-              </button>
+              <PendingSubmitButton
+                idleLabel="Update status"
+                pendingLabel="Updating..."
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
+              />
             </form>
             <form action={addConversationToPlayers}>
               <input type="hidden" name="conversation_id" value={thread.conversation.id} />
-              <button className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
-                Add to My Players
-              </button>
+              <PendingSubmitButton
+                idleLabel="Add to My Players"
+                pendingLabel="Adding..."
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
+              />
             </form>
           </div>
         </section>

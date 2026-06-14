@@ -1,3 +1,46 @@
+const sections = [
+  {
+    title: "Information we collect",
+    body: "Reppy may collect account information, coach profile information, training request details, conversation messages, notification preferences, push subscription records, and moderation records needed to operate the platform.",
+  },
+  {
+    title: "Authentication",
+    body: "Authentication emails, account confirmation, password recovery, and sign-in links are handled through the authentication provider. Reppy does not use its custom alert email provider for standard authentication emails.",
+  },
+  {
+    title: "Messages stay inside Reppy",
+    body: "Training requests, coach replies, and parent or player replies are stored and viewed inside Reppy. Normal conversation activity is not delivered by email.",
+  },
+  {
+    title: "Notifications",
+    body: "Reppy uses in-app notifications, unread badges, Supabase Realtime updates, and browser push when permission is granted. Push notifications use generic text and do not include full private messages, contact details, exact addresses, or private account information.",
+  },
+  {
+    title: "Free-coach email alert",
+    body: "A free coach may receive one limited email alert when a new locked training request arrives. That email may include only safe metadata such as sport, age range, general area, and training type.",
+  },
+  {
+    title: "Contact details",
+    body: "Email addresses, phone numbers, exact locations, and guardian contact details remain hidden from coaches unless a parent, guardian, or player intentionally shares selected contact information inside a conversation.",
+  },
+  {
+    title: "Retention",
+    body: "Unsaved conversations expire 90 days after their most recent activity. Saved conversations, reported conversations, and conversations under legal or safety hold may remain longer. Player records, billing records, subscription records, and required moderation audit records are managed separately from conversation retention.",
+  },
+  {
+    title: "Moderation and safety",
+    body: "Administrators may review reported conversations for safety, spam prevention, account suspension, bans, legal holds, and other legitimate moderation needs. Administrative access should be logged for sensitive reviews.",
+  },
+  {
+    title: "Parents and guardians",
+    body: "For athletes under 18, a parent or guardian should be involved in all training communication and scheduling. Verified parent, player, and guardian account flows are required before public launch.",
+  },
+  {
+    title: "Your choices",
+    body: "Users may disable browser push permission in their browser or device settings. In-app notifications remain part of essential platform operation. Users may contact Reppy to request data review or deletion.",
+  },
+];
+
 export default function PrivacyPage() {
   return (
     <main className="bg-[#f7f8f3] py-14">
@@ -12,37 +55,12 @@ export default function PrivacyPage() {
           Draft for product development. This is not final legal advice and should be reviewed by a
           qualified professional before public launch.
         </p>
-        <h2 className="mt-8 text-2xl font-semibold text-slate-950">Information we collect</h2>
-        <p>
-          Reppy may collect account information, coach profile information, training request
-          information, and messages needed to operate the coaching platform.
-        </p>
-        <h2 className="mt-8 text-2xl font-semibold text-slate-950">Contact details</h2>
-        <p>
-          Contact details are hidden from coaches unless a parent, guardian, or player intentionally
-          shares selected contact information inside a conversation.
-        </p>
-        <h2 className="mt-8 text-2xl font-semibold text-slate-950">Moderation</h2>
-        <p>
-          Administrators may review reported conversations for safety, spam prevention, account
-          suspension, bans, and other legitimate moderation needs.
-        </p>
-        <h2 className="mt-8 text-2xl font-semibold text-slate-950">Retention</h2>
-        <p>
-          Unsaved conversations are eligible for message-content deletion after one year. Saved
-          conversations may remain available until unsaved, deleted, or overridden by user deletion
-          requests or safety requirements.
-        </p>
-        <h2 className="mt-8 text-2xl font-semibold text-slate-950">Parents and guardians</h2>
-        <p>
-          For athletes under 18, a parent or guardian should be involved in all training
-          communication and scheduling. Verified parent/player accounts are a launch requirement.
-        </p>
-        <h2 className="mt-8 text-2xl font-semibold text-slate-950">Deletion requests</h2>
-        <p>
-          Users can contact the platform to request deletion or review of their data. Final support
-          contact details should be added before launch.
-        </p>
+        {sections.map((section) => (
+          <section key={section.title}>
+            <h2 className="mt-8 text-2xl font-semibold text-slate-950">{section.title}</h2>
+            <p>{section.body}</p>
+          </section>
+        ))}
       </article>
     </main>
   );

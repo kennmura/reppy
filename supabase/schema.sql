@@ -11,6 +11,11 @@ create table if not exists coaches (
   headline text,
   bio text,
   location text,
+  city text,
+  state text,
+  zip_code text,
+  latitude double precision,
+  longitude double precision,
   service_area text,
   pricing_text text default 'Pricing available upon request.',
   profile_photo_url text,
@@ -149,6 +154,11 @@ alter table coaches add column if not exists founding_price_locked boolean defau
 alter table coaches add column if not exists contact_scan_status text default 'clear';
 alter table coaches add column if not exists admin_premium_access_until timestamp with time zone;
 alter table coaches add column if not exists referral_code text unique;
+alter table coaches add column if not exists city text;
+alter table coaches add column if not exists state text;
+alter table coaches add column if not exists zip_code text;
+alter table coaches add column if not exists latitude double precision;
+alter table coaches add column if not exists longitude double precision;
 
 alter table training_requests add column if not exists conversation_id uuid;
 alter table training_requests add column if not exists requester_user_id uuid references auth.users(id) on delete set null;
@@ -202,7 +212,12 @@ create table if not exists conversations (
   is_saved boolean default false,
   saved_at timestamp with time zone,
   saved_by_user_id uuid references auth.users(id) on delete set null,
-  retention_expires_at timestamp with time zone default (now() + interval '365 days'),
+  retention_expires_at timestamp with time zone default (now() + interval '90 days'),
+  free_coach_alert_sent_at timestamp with time zone,
+  free_coach_alert_attempted_at timestamp with time zone,
+  free_coach_alert_error text,
+  retention_processed_at timestamp with time zone,
+  legal_hold_until timestamp with time zone,
   parent_follow_up_sent_at timestamp with time zone,
   last_message_at timestamp with time zone default now(),
   created_at timestamp with time zone default now(),
@@ -254,6 +269,21 @@ create table if not exists contact_share_events (
   shared_values jsonb not null default '{}'::jsonb,
   consented_at timestamp with time zone default now(),
   revoked_at timestamp with time zone
+);
+
+create table if not exists conversation_participants (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references conversations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null check (role in ('coach', 'parent', 'player', 'guardian')),
+  last_read_at timestamp with time zone,
+  unread_count integer not null default 0 check (unread_count >= 0),
+  is_archived boolean not null default false,
+  is_muted boolean not null default false,
+  is_blocked boolean not null default false,
+  joined_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  unique (conversation_id, user_id, role)
 );
 
 create table if not exists player_records (
@@ -331,9 +361,34 @@ create table if not exists notifications (
   title text not null,
   body text,
   related_conversation_id uuid references conversations(id) on delete cascade,
+  action_url text,
+  is_read boolean not null default false,
   read_at timestamp with time zone,
   sent_at timestamp with time zone,
   created_at timestamp with time zone default now()
+);
+
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth_key text not null,
+  user_agent text,
+  device_label text,
+  is_active boolean not null default true,
+  last_used_at timestamp with time zone,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now()
+);
+
+create table if not exists notification_preferences (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  in_app_enabled boolean not null default true,
+  push_enabled boolean not null default true,
+  free_coach_email_enabled boolean not null default true,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now()
 );
 
 create table if not exists moderation_logs (
@@ -370,19 +425,28 @@ alter table conversations enable row level security;
 alter table conversation_private_details enable row level security;
 alter table messages enable row level security;
 alter table contact_share_events enable row level security;
+alter table conversation_participants enable row level security;
 alter table player_records enable row level security;
 alter table message_reports enable row level security;
 alter table referrals enable row level security;
 alter table premium_access_grants enable row level security;
 alter table banned_identifiers enable row level security;
 alter table notifications enable row level security;
+alter table push_subscriptions enable row level security;
+alter table notification_preferences enable row level security;
 alter table moderation_logs enable row level security;
 
 create index if not exists coaches_user_id_idx on coaches(user_id);
+create index if not exists coaches_zip_code_idx on coaches(zip_code);
+create index if not exists coaches_coordinates_idx on coaches(latitude, longitude) where latitude is not null and longitude is not null;
 create index if not exists conversations_coach_id_idx on conversations(coach_id);
 create index if not exists conversations_coach_unread_idx on conversations(coach_id, is_unread_by_coach);
 create index if not exists conversations_retention_idx on conversations(retention_expires_at) where is_saved = false;
+create index if not exists conversation_participants_user_idx on conversation_participants(user_id, unread_count);
+create index if not exists conversation_participants_conversation_idx on conversation_participants(conversation_id);
 create index if not exists messages_conversation_id_idx on messages(conversation_id);
+create index if not exists notifications_user_unread_idx on notifications(user_id, is_read, created_at desc);
+create index if not exists push_subscriptions_user_idx on push_subscriptions(user_id, is_active);
 create index if not exists player_records_coach_id_idx on player_records(coach_id);
 create index if not exists subscriptions_coach_user_id_idx on subscriptions(coach_user_id);
 create index if not exists premium_access_grants_coach_user_id_idx on premium_access_grants(coach_user_id);
@@ -475,3 +539,86 @@ drop policy if exists "Users can read own notifications" on notifications;
 create policy "Users can read own notifications"
 on notifications for select
 using (user_id = auth.uid());
+
+drop policy if exists "Users can update own notification read state" on notifications;
+create policy "Users can update own notification read state"
+on notifications for update
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "Users can delete own notifications" on notifications;
+create policy "Users can delete own notifications"
+on notifications for delete
+using (user_id = auth.uid());
+
+drop policy if exists "Users can read own conversation participants" on conversation_participants;
+create policy "Users can read own conversation participants"
+on conversation_participants for select
+using (user_id = auth.uid());
+
+drop policy if exists "Users can update own conversation participants" on conversation_participants;
+create policy "Users can update own conversation participants"
+on conversation_participants for update
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "Users can read own push subscriptions" on push_subscriptions;
+create policy "Users can read own push subscriptions"
+on push_subscriptions for select
+using (user_id = auth.uid());
+
+drop policy if exists "Users can insert own push subscriptions" on push_subscriptions;
+create policy "Users can insert own push subscriptions"
+on push_subscriptions for insert
+with check (user_id = auth.uid());
+
+drop policy if exists "Users can update own push subscriptions" on push_subscriptions;
+create policy "Users can update own push subscriptions"
+on push_subscriptions for update
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "Users can read own notification preferences" on notification_preferences;
+create policy "Users can read own notification preferences"
+on notification_preferences for select
+using (user_id = auth.uid());
+
+drop policy if exists "Users can manage own notification preferences" on notification_preferences;
+create policy "Users can manage own notification preferences"
+on notification_preferences for all
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+create or replace function public.increment_participant_unread(
+  target_conversation_id uuid,
+  target_user_id uuid
+)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update conversation_participants
+  set unread_count = unread_count + 1,
+      updated_at = now()
+  where conversation_id = target_conversation_id
+    and user_id = target_user_id
+    and is_muted = false
+    and is_blocked = false;
+$$;
+
+create or replace function public.mark_conversation_read(target_conversation_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update conversation_participants
+  set unread_count = 0,
+      last_read_at = now(),
+      updated_at = now()
+  where conversation_id = target_conversation_id
+    and user_id = auth.uid();
+end;
+$$;

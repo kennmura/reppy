@@ -156,7 +156,7 @@ export function formatAccessBanner(access: MessageAccess) {
     body: `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} remaining`,
     warning:
       daysRemaining <= 2
-        ? "Your Message Centre will lock when your trial ends. Upgrade to keep access to conversations and player records."
+        ? "Your Message Center will lock when your trial ends. Upgrade to keep access to conversations and player records."
         : null,
   };
 }

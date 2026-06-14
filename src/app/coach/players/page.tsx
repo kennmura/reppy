@@ -3,19 +3,21 @@ import { TrialBanner } from "@/components/coach/TrialBanner";
 import { getCoachContextOrRedirect } from "@/lib/auth";
 import { getCoachPlayerRecords, getCoachUnreadCount } from "@/lib/data";
 import { getMessageAccess } from "@/lib/entitlements";
+import { getUnreadNotificationCount } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 
 export default async function CoachPlayersPage() {
-  const { coach, coachUserId } = await getCoachContextOrRedirect();
-  const [access, unreadCount, players] = await Promise.all([
+  const { user, coach, coachUserId } = await getCoachContextOrRedirect();
+  const [access, unreadCount, notificationCount, players] = await Promise.all([
     getMessageAccess({ coach, coachUserId }),
-    getCoachUnreadCount(coach.id),
+    getCoachUnreadCount(coach.id, coachUserId),
+    getUnreadNotificationCount(user.id),
     getCoachPlayerRecords(coach.id),
   ]);
 
   return (
-    <CoachShell unreadCount={unreadCount} access={access}>
+    <CoachShell userId={user.id} unreadCount={unreadCount} notificationCount={notificationCount} access={access}>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Players</h1>

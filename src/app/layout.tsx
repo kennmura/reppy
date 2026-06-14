@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   title: "Reppy | Local Sports Coaching",
   description:
     "Find local sports coaches for private and small-group training across multiple sports.",
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({
