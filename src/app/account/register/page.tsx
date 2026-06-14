@@ -6,12 +6,13 @@ const errors: Record<string, string> = {
   "missing-supabase": "Set Supabase environment variables before registering.",
   "missing-public-supabase": "Account registration is not configured yet. Missing public Supabase settings.",
   "missing-admin-supabase": "Account registration is not fully configured yet. Missing secure server settings.",
-  "missing-fields": "Enter the player name, parent/guardian name when needed, email, and password.",
+  "missing-fields": "Enter the player name, player date of birth, parent/guardian name when needed, email, and password.",
   "weak-password": "Use a password with at least 8 characters.",
   "password-mismatch": "Passwords do not match.",
   "terms-required": "Accept the terms and privacy policy to continue.",
   "privacy-required": "Accept the privacy policy to continue.",
   "invalid-phone": "Enter a valid mobile phone number.",
+  "invalid-dob": "Enter a valid player date of birth. It cannot be in the future.",
   "email-already-registered": "An account already exists for that email. Try signing in instead.",
   "signup-rate-limited": "Too many signup emails were requested. Please wait a few minutes and try again.",
   "signup-failed": "The account could not be created. Try signing in or use another email.",
@@ -30,6 +31,7 @@ export default async function AccountRegisterPage({
     next?: string;
     player_name?: string;
     guardian_name?: string;
+    player_date_of_birth?: string;
     display_name?: string;
     email?: string;
     phone?: string;
@@ -65,6 +67,7 @@ export default async function AccountRegisterPage({
             defaultValues={{
               player_name: params.player_name ?? params.display_name ?? "",
               guardian_name: params.guardian_name ?? "",
+              player_date_of_birth: params.player_date_of_birth ?? "",
               email: params.email ?? "",
               phone: params.phone ?? "",
               role: defaultRole,

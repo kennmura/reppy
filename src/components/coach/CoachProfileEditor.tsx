@@ -70,7 +70,7 @@ export function CoachProfileEditor({
         </div>
       ) : null}
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section id="submit" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#2f6f5e]">
@@ -96,7 +96,7 @@ export function CoachProfileEditor({
         </div>
       </section>
 
-      <EditorSection title="Basics">
+      <EditorSection id="basics" title="Basics">
         <Field label="Full name" name="full_name" defaultValue={coach?.full_name ?? displayName} required />
         <Field label="Profile slug" name="slug" defaultValue={coach?.slug ?? slugPreview(displayName)} required />
         <SportField defaultValue={coach?.sport ?? ""} />
@@ -112,6 +112,7 @@ export function CoachProfileEditor({
         <Field label="City" name="city" defaultValue={coach?.city ?? ""} />
         <Field label="State" name="state" defaultValue={coach?.state ?? ""} placeholder="MA" />
         <Field label="ZIP code" name="zip_code" defaultValue={coach?.zip_code ?? ""} />
+        <Field label="Timezone" name="timezone" defaultValue={coach?.timezone ?? "America/New_York"} placeholder="America/New_York" />
         <Field
           label="Service radius in miles"
           name="service_radius_miles"
@@ -122,7 +123,7 @@ export function CoachProfileEditor({
         <Field label="Pricing text" name="pricing_text" defaultValue={coach?.pricing_text ?? ""} wide />
       </EditorSection>
 
-      <EditorSection title="Photos and links">
+      <EditorSection id="photos" title="Photos and links">
         <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600 sm:col-span-2">
           Use JPG, PNG, or WebP under 5MB. Public profile text should not include phone numbers,
           emails, social handles, or direct booking instructions.
@@ -136,7 +137,7 @@ export function CoachProfileEditor({
         <Field label="Booking URL" name="booking_url" defaultValue={coach?.booking_url ?? ""} wide />
       </EditorSection>
 
-      <EditorSection title="Bio and coaching details">
+      <EditorSection id="bio" title="Bio and coaching details">
         <Field label="Bio" name="bio" defaultValue={coach?.bio ?? ""} wide textarea rows={8} required />
         <Field label="Current affiliation" name="current_affiliation" defaultValue={coach?.current_affiliation ?? ""} />
         <Field label="Years of experience" name="years_experience" defaultValue={coach?.years_experience?.toString() ?? ""} />
@@ -150,7 +151,7 @@ export function CoachProfileEditor({
         <Field label="General availability" name="general_availability" defaultValue={coach?.general_availability ?? ""} wide />
       </EditorSection>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section id="audiences" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">Best-fit players</h2>
         <p className="mt-1 text-sm text-slate-600">Short labels shown in the profile sidebar.</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -165,7 +166,7 @@ export function CoachProfileEditor({
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section id="services" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">Sessions and services</h2>
         <p className="mt-1 text-sm text-slate-600">Empty rows are ignored. The first service is highlighted.</p>
         <div className="mt-5 grid gap-4">
@@ -175,7 +176,7 @@ export function CoachProfileEditor({
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section id="credentials" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">Credentials</h2>
         <p className="mt-1 text-sm text-slate-600">Licenses, teams, certifications, awards, or playing milestones.</p>
         <div className="mt-5 grid gap-4">
@@ -243,9 +244,9 @@ function slugPreview(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function EditorSection({ title, children }: { title: string; children: React.ReactNode }) {
+function EditorSection({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="grid gap-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2">
+    <section id={id} className="grid gap-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2">
       <div className="sm:col-span-2">
         <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
       </div>

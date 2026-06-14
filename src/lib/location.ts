@@ -11,11 +11,8 @@ export type GeocodedLocation = Coordinates & {
 
 const earthRadiusMiles = 3958.8;
 const defaultCoachRadiusMiles = 30;
-const staticGeocodingEnabled =
-  process.env.REPPY_ENABLE_STATIC_GEOCODING === "true" ||
-  process.env.NEXT_PUBLIC_REPPY_ENABLE_STATIC_GEOCODING === "true";
-
 const knownLocations: Record<string, GeocodedLocation> = {
+  "03079": { city: "Salem", state: "NH", zip_code: "03079", latitude: 42.7884, longitude: -71.2009 },
   "02453": { city: "Waltham", state: "MA", zip_code: "02453", latitude: 42.3765, longitude: -71.2356 },
   "02452": { city: "Waltham", state: "MA", zip_code: "02452", latitude: 42.3987, longitude: -71.2436 },
   "02451": { city: "Waltham", state: "MA", zip_code: "02451", latitude: 42.3984, longitude: -71.2587 },
@@ -40,6 +37,7 @@ const knownLocations: Record<string, GeocodedLocation> = {
   "newton ma": { city: "Newton", state: "MA", zip_code: null, latitude: 42.337, longitude: -71.2092 },
   "watertown": { city: "Watertown", state: "MA", zip_code: null, latitude: 42.3709, longitude: -71.1828 },
   "watertown ma": { city: "Watertown", state: "MA", zip_code: null, latitude: 42.3709, longitude: -71.1828 },
+  "watertown massachusetts": { city: "Watertown", state: "MA", zip_code: null, latitude: 42.3709, longitude: -71.1828 },
   "cambridge": { city: "Cambridge", state: "MA", zip_code: null, latitude: 42.3736, longitude: -71.1097 },
   "cambridge ma": { city: "Cambridge", state: "MA", zip_code: null, latitude: 42.3736, longitude: -71.1097 },
   "belmont": { city: "Belmont", state: "MA", zip_code: null, latitude: 42.3959, longitude: -71.1787 },
@@ -48,6 +46,8 @@ const knownLocations: Record<string, GeocodedLocation> = {
   "lexington ma": { city: "Lexington", state: "MA", zip_code: null, latitude: 42.4473, longitude: -71.2245 },
   "somerville": { city: "Somerville", state: "MA", zip_code: null, latitude: 42.3876, longitude: -71.0995 },
   "somerville ma": { city: "Somerville", state: "MA", zip_code: null, latitude: 42.3876, longitude: -71.0995 },
+  "salem nh": { city: "Salem", state: "NH", zip_code: null, latitude: 42.7884, longitude: -71.2009 },
+  "salem new hampshire": { city: "Salem", state: "NH", zip_code: null, latitude: 42.7884, longitude: -71.2009 },
   "brookline": { city: "Brookline", state: "MA", zip_code: null, latitude: 42.3318, longitude: -71.1212 },
   "brookline ma": { city: "Brookline", state: "MA", zip_code: null, latitude: 42.3318, longitude: -71.1212 },
 };
@@ -67,10 +67,6 @@ export function zipCodeFromLocationInput(value: string) {
 export function geocodeLocationInput(value: string): GeocodedLocation | null {
   const normalized = normalizeLocationInput(value);
   if (!normalized) {
-    return null;
-  }
-
-  if (!staticGeocodingEnabled) {
     return null;
   }
 
@@ -164,7 +160,7 @@ export function isMissingCoachLocationColumnError(error: { message?: string; det
   }
 
   const text = `${error.message ?? ""} ${error.details ?? ""}`;
-  return /(city|state|zip_code|latitude|longitude|public_location|service_radius_miles)/i.test(text) && /(column|schema cache|not find)/i.test(text);
+  return /(city|state|zip_code|latitude|longitude|public_location|service_radius_miles|timezone)/i.test(text) && /(column|schema cache|not find)/i.test(text);
 }
 
 function toRadians(value: number) {

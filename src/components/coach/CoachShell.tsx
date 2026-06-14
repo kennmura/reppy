@@ -2,15 +2,7 @@ import Link from "next/link";
 import { NotificationBell } from "@/components/NotificationBell";
 import { signOutCoach } from "@/lib/actions";
 import type { MessageAccess } from "@/lib/types";
-
-const links = [
-  { href: "/coach/dashboard", label: "Dashboard" },
-  { href: "/coach/profile", label: "Profile" },
-  { href: "/coach/messages", label: "Messages" },
-  { href: "/coach/messages?status=unread", label: "Requests" },
-  { href: "/coach/billing", label: "Billing / Subscription" },
-  { href: "/coach/settings/notifications", label: "Settings" },
-];
+import { CoachSidebarNav } from "./CoachSidebarNav";
 
 export function CoachShell({
   children,
@@ -35,7 +27,7 @@ export function CoachShell({
           <div className="flex items-center gap-2">
             <NotificationBell userId={userId} initialCount={notificationCount} href="/coach/notifications" />
             <form action={signOutCoach}>
-              <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500">
+              <button className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-slate-500">
                 Sign out
               </button>
             </form>
@@ -44,22 +36,7 @@ export function CoachShell({
       </header>
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[220px_1fr] lg:px-8">
         <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-          <nav className="flex flex-wrap gap-1 lg:grid">
-            {links.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="flex items-center justify-between whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                <span>{link.label}</span>
-                {link.label === "Messages" && unreadCount ? (
-                  <span className="rounded-full bg-[#12355b] px-2 py-0.5 text-xs font-semibold text-white">
-                    {unreadCount}
-                  </span>
-                ) : null}
-              </Link>
-            ))}
-          </nav>
+          <CoachSidebarNav unreadCount={unreadCount} />
           <div className="mt-4 rounded-md bg-[#f7f8f3] p-3 text-xs leading-5 text-slate-600">
             <p className="font-semibold text-slate-950">
               {access.hasAccess ? "Messaging active" : "Message Center locked"}
@@ -70,6 +47,11 @@ export function CoachShell({
                 : "Start a trial or upgrade to view complete requests and reply."}
             </p>
           </div>
+          <form action={signOutCoach} className="mt-4">
+            <button className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-slate-500">
+              Sign out
+            </button>
+          </form>
         </aside>
         <main>{children}</main>
       </div>

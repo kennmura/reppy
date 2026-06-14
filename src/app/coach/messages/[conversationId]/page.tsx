@@ -101,6 +101,9 @@ export default async function CoachMessageThreadPage({
           </div>
           <div className="mt-5 grid gap-3 text-sm sm:grid-cols-4">
             <Meta label="Service" value={thread.privateDetails?.service_title} />
+            <Meta label="Requested time" value={formatRequestedTime(thread.privateDetails)} />
+            <Meta label="Player age" value={thread.privateDetails?.player_age_at_request?.toString()} />
+            <Meta label="Club/team" value={thread.privateDetails?.current_team} />
             <Meta label="Current level" value={thread.privateDetails?.current_level} />
             <Meta label="Preferred days/times" value={thread.privateDetails?.preferred_days_times} />
             <Meta label="Guardian" value={thread.privateDetails?.guardian_name} />
@@ -187,4 +190,40 @@ function Meta({ label, value }: { label: string; value?: string | null }) {
       <p className="mt-1 font-medium text-slate-900">{value || "Not provided"}</p>
     </div>
   );
+}
+
+function formatRequestedTime(privateDetails: {
+  requested_date?: string | null;
+  requested_start_time?: string | null;
+  requested_end_time?: string | null;
+  timezone?: string | null;
+} | null) {
+  if (!privateDetails?.requested_date) {
+    return null;
+  }
+
+  const [year, month, day] = privateDetails.requested_date.split("-").map(Number);
+  const dateLabel = new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+  if (!privateDetails.requested_start_time) {
+    return dateLabel;
+  }
+
+  return `${dateLabel}, ${formatTime(privateDetails.requested_start_time)} to ${formatTime(privateDetails.requested_end_time ?? "")} ${privateDetails.timezone ?? ""}`.trim();
+}
+
+function formatTime(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  const [hourText, minuteText] = value.split(":");
+  return new Date(2026, 0, 1, Number(hourText), Number(minuteText)).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

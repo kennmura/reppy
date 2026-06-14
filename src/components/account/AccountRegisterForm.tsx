@@ -9,6 +9,7 @@ type AccountRegisterFormProps = {
   defaultValues?: {
     player_name?: string;
     guardian_name?: string;
+    player_date_of_birth?: string;
     email?: string;
     phone?: string;
     role?: "parent" | "adult_player";
@@ -52,6 +53,19 @@ export function AccountRegisterForm({ action, next, defaultValues }: AccountRegi
         required={role === "parent"}
         onChange={() => setClientError("")}
       />
+      <div>
+        <Field
+          label="Player date of birth"
+          name="player_date_of_birth"
+          type="date"
+          defaultValue={defaultValues?.player_date_of_birth ?? ""}
+          autoComplete="bday"
+          onChange={() => setClientError("")}
+        />
+        <p className="mt-2 text-xs leading-5 text-slate-600">
+          Used to calculate the player&apos;s age for training requests. This should be the athlete&apos;s date of birth, not the parent&apos;s.
+        </p>
+      </div>
       <Field
         label="Email"
         name="email"

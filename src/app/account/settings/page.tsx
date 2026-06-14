@@ -1,4 +1,5 @@
 import { AccountShell } from "@/components/account/AccountShell";
+import { calculateAgeFromDateOfBirth } from "@/lib/accountProfile";
 import { updateAccountProfile } from "@/lib/actions";
 import { getAccountContextOrRedirect, getAccountPrivateDetails } from "@/lib/auth";
 import { getUserCoachingPreference } from "@/lib/data";
@@ -20,6 +21,8 @@ export default async function AccountSettingsPage({
   ]);
   const emailVerified = Boolean(user.email_confirmed_at || profile.email_verified_at);
   const phoneVerified = Boolean(privateDetails?.phone_verified_at || profile.phone_verified_at || user.phone_confirmed_at);
+  const playerDateOfBirth = privateDetails?.player_date_of_birth ?? preference?.player_birth_date ?? "";
+  const calculatedAge = calculateAgeFromDateOfBirth(playerDateOfBirth);
 
   return (
     <AccountShell userId={user.id} notificationCount={notificationCount}>
@@ -43,7 +46,12 @@ export default async function AccountSettingsPage({
         ) : null}
         {params.error === "missing-player-profile" ? (
           <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            Add the player age and current club/team before requesting training.
+            Add the player date of birth and current club/team before requesting training.
+          </p>
+        ) : null}
+        {params.error === "invalid-dob" ? (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            Enter a valid player date of birth. It cannot be in the future.
           </p>
         ) : null}
         {params.error === "profile-save-failed" ? (
@@ -59,8 +67,23 @@ export default async function AccountSettingsPage({
             defaultValue={preference?.guardian_name ?? ""}
             required={profile.role === "parent"}
           />
-          <Field label="Player age" name="player_age" defaultValue={preference?.player_age ?? ""} required />
-          <Field label="Date of birth" name="player_birth_date" type="date" defaultValue={preference?.player_birth_date ?? ""} />
+          <div className="text-sm font-medium text-slate-800">
+            <Field
+              label="Player date of birth"
+              name="player_date_of_birth"
+              type="date"
+              defaultValue={playerDateOfBirth}
+              required
+            />
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              Used to calculate the player&apos;s age for training requests. This should be the athlete&apos;s date of birth, not the parent&apos;s.
+            </p>
+            {calculatedAge !== null ? (
+              <p className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                Calculated player age: {calculatedAge}
+              </p>
+            ) : null}
+          </div>
           <Field label="Current club/team" name="current_team" defaultValue={preference?.current_team ?? ""} required />
           <Field label="Preferred training location" name="location_text" defaultValue={preference?.location_text ?? ""} />
           <Field label="Skill level" name="skill_level" defaultValue={preference?.skill_level ?? ""} />

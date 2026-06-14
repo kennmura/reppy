@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { signOutCurrentUser } from "@/lib/actions";
 import { getApplicationProfile } from "@/lib/auth";
 import { createSupabaseServerClient, hasSupabaseAdminConfig, hasSupabaseConfig } from "@/lib/supabase";
 import { AuthMenu } from "./AuthMenu";
@@ -17,6 +18,7 @@ async function getSessionNav() {
 
   if (!hasSupabaseAdminConfig()) {
     return {
+      role: "account",
       dashboardHref: "/account/dashboard",
       profileHref: "/account/settings",
     };
@@ -27,6 +29,7 @@ async function getSessionNav() {
 
     if (profile?.role === "coach") {
       return {
+        role: profile.role,
         dashboardHref: "/coach/dashboard",
         profileHref: "/coach/profile",
       };
@@ -34,6 +37,7 @@ async function getSessionNav() {
 
     if (profile?.role === "admin") {
       return {
+        role: profile.role,
         dashboardHref: "/admin",
         profileHref: "/admin/accounts",
       };
@@ -46,6 +50,7 @@ async function getSessionNav() {
   }
 
   return {
+    role: "account",
     dashboardHref: "/account/dashboard",
     profileHref: "/account/settings",
   };
@@ -53,6 +58,12 @@ async function getSessionNav() {
 
 export async function Navbar() {
   const sessionNav = await getSessionNav();
+  const showFindCoaches = sessionNav?.role !== "coach";
+  const navLinkClass = "inline-flex h-10 items-center rounded-md px-2 text-sm font-medium hover:text-slate-950";
+  const secondaryButtonClass =
+    "inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:border-slate-500 focus:outline-none focus:ring-2 focus:ring-[#12355b]/20";
+  const primaryButtonClass =
+    "inline-flex h-10 items-center justify-center rounded-md bg-[#12355b] px-3 text-sm font-semibold text-white hover:bg-[#0d2948] focus:outline-none focus:ring-2 focus:ring-[#12355b]/30 sm:px-4";
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/92 backdrop-blur">
@@ -64,21 +75,28 @@ export async function Navbar() {
           <span className="text-lg font-semibold tracking-tight text-slate-950">Reppy</span>
         </Link>
         <div className="flex w-full items-center justify-between gap-2 text-sm font-medium text-slate-700 sm:w-auto sm:justify-end sm:gap-4">
-          <Link href="/" className="hover:text-slate-950">
+          <Link href="/" className={navLinkClass}>
             Home
           </Link>
-          <Link href="/coaches" className="rounded-md bg-[#12355b] px-3 py-2 text-white hover:bg-[#0d2948] sm:px-4">
-            Find Coaches
-          </Link>
+          {showFindCoaches ? (
+            <Link href="/coaches" className={primaryButtonClass}>
+              Find Coaches
+            </Link>
+          ) : null}
           {sessionNav ? (
-            <>
-              <Link href={sessionNav.dashboardHref} className="hover:text-slate-950">
+            <div className="flex items-center gap-2">
+              <Link href={sessionNav.dashboardHref} className={secondaryButtonClass}>
                 Dashboard
               </Link>
-              <Link href={sessionNav.profileHref} className="hover:text-slate-950">
+              <Link href={sessionNav.profileHref} className={secondaryButtonClass}>
                 Profile
               </Link>
-            </>
+              <form action={signOutCurrentUser}>
+                <button className={secondaryButtonClass}>
+                  Sign out
+                </button>
+              </form>
+            </div>
           ) : (
             <AuthMenu />
           )}

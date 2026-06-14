@@ -103,7 +103,7 @@ export default async function CoachesPage({
         </form>
         {location && !hasCoordinateOrigin ? (
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
-            We could not calculate distance for that location yet. Showing matching coaches instead.
+            We could not find that location. Try city, state, or ZIP code.
           </div>
         ) : null}
         {coaches.length ? (

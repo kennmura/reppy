@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Award, Bookmark, Camera, MessageSquare, Star } from "lucide-react";
+import { CoachAvailabilityPanel } from "./CoachAvailabilityPanel";
 import { LocationSection } from "./LocationSection";
 import { PricingSection } from "./PricingSection";
 import { RequestTrainingForm } from "./RequestTrainingForm";
@@ -10,19 +11,31 @@ import { getRequestingAccountState } from "@/lib/auth";
 import { getSavedCoachIdsForUser, getUserCoachingPreference } from "@/lib/data";
 import type { Coach, CoachProfileData, UserCoachingPreference } from "@/lib/types";
 
-export async function CoachProfile({ profile }: { profile: CoachProfileData }) {
-  const { coach, services, audiences, testimonials, credentials = [] } = profile;
-  const accountState = await getRequestingAccountState();
+export async function CoachProfile({
+  profile,
+  viewerMode = "public",
+}: {
+  profile: CoachProfileData;
+  viewerMode?: "public" | "owner";
+}) {
+  const { coach, services, audiences, testimonials, credentials = [], availabilityBlocks = [] } = profile;
+  const isOwner = viewerMode === "owner";
+  const accountState = isOwner ? null : await getRequestingAccountState();
   const savedCoachIds =
-    accountState.status === "verified" ? await getSavedCoachIdsForUser(accountState.user.id, [coach.id]) : [];
+    accountState?.status === "verified" ? await getSavedCoachIdsForUser(accountState.user.id, [coach.id]) : [];
   const accountPreference =
-    accountState.status === "verified" ? await getUserCoachingPreference(accountState.user.id) : null;
+    accountState?.status === "verified" ? await getUserCoachingPreference(accountState.user.id) : null;
   const isSaved = savedCoachIds.includes(coach.id);
   const requestCtaLabel = coach.accepting_requests === false ? "Not accepting requests" : "Request Training";
 
   return (
     <>
-      <SocialProfileHeader coach={coach} requestCtaLabel={requestCtaLabel} isSaved={isSaved} />
+      <SocialProfileHeader
+        coach={coach}
+        requestCtaLabel={requestCtaLabel}
+        isSaved={isSaved}
+        viewerMode={viewerMode}
+      />
       <section className="bg-[#f7f8f3] py-8 sm:py-10">
         <div className="mx-auto grid max-w-6xl gap-6 px-4 sm:px-6 lg:grid-cols-[0.72fr_1.28fr] lg:px-8">
           <aside className="space-y-4">
@@ -119,15 +132,41 @@ export async function CoachProfile({ profile }: { profile: CoachProfileData }) {
                     Training services
                   </h2>
                 </div>
-                <Link
-                  href="#request-training"
-                  className="hidden rounded-md bg-[#12355b] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0d2948] sm:inline-flex"
-                >
-                  Request
-                </Link>
+                {isOwner ? (
+                  <Link
+                    href="/coach/profile/edit#services"
+                    className="hidden h-10 items-center rounded-md bg-[#12355b] px-4 text-sm font-semibold text-white hover:bg-[#0d2948] sm:inline-flex"
+                  >
+                    Edit services
+                  </Link>
+                ) : (
+                  <Link
+                    href="#request-training"
+                    className="hidden h-10 items-center rounded-md bg-[#12355b] px-4 text-sm font-semibold text-white hover:bg-[#0d2948] sm:inline-flex"
+                  >
+                    Request
+                  </Link>
+                )}
               </div>
               <div className="mt-5 grid gap-4">
-                <ServiceSelectionPanel services={services} />
+                <ServiceSelectionPanel services={services} interactive={!isOwner} />
+              </div>
+            </section>
+            <section id="availability" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6f5e]">
+                  Availability
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
+                  Training times
+                </h2>
+              </div>
+              <div className="mt-5">
+                <CoachAvailabilityPanel
+                  blocks={availabilityBlocks}
+                  timezone={coach.timezone || "America/New_York"}
+                  ownerMode={isOwner}
+                />
               </div>
             </section>
           </div>
@@ -154,34 +193,36 @@ export async function CoachProfile({ profile }: { profile: CoachProfileData }) {
           </div>
         </section>
       ) : null}
-      <section id="request-training" className="bg-[#f7f8f3] py-16">
-        <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 md:grid-cols-[0.75fr_1.25fr] lg:px-8">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6f5e]">
-              Request Training
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-              Request Training
-            </h2>
-            <p className="mt-4 leading-7 text-slate-700">
-              Share the player&apos;s goals, current level, and general availability. Exact private
-              locations are handled after the inquiry.
-            </p>
-            <p className="mt-4 rounded-md border border-[#d7e5dc] bg-[#f3f8f5] px-4 py-3 text-sm leading-6 text-slate-700">
-              For athletes under 18, a parent or guardian should be involved in all training
-              communication and scheduling.
-            </p>
+      {!isOwner && accountState ? (
+        <section id="request-training" className="bg-[#f7f8f3] py-16">
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 md:grid-cols-[0.75fr_1.25fr] lg:px-8">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6f5e]">
+                Request Training
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                Request Training
+              </h2>
+              <p className="mt-4 leading-7 text-slate-700">
+                Share the player&apos;s goals, current level, and general availability. Exact private
+                locations are handled after the inquiry.
+              </p>
+              <p className="mt-4 rounded-md border border-[#d7e5dc] bg-[#f3f8f5] px-4 py-3 text-sm leading-6 text-slate-700">
+                For athletes under 18, a parent or guardian should be involved in all training
+                communication and scheduling.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <RequestTrainingGate
+                coach={coach}
+                accountState={accountState}
+                accountPreference={accountPreference}
+                services={services}
+              />
+            </div>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <RequestTrainingGate
-              coach={coach}
-              accountState={accountState}
-              accountPreference={accountPreference}
-              services={services}
-            />
-          </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -217,16 +258,19 @@ function SocialProfileHeader({
   coach,
   requestCtaLabel,
   isSaved,
+  viewerMode,
 }: {
   coach: Coach;
   requestCtaLabel: string;
   isSaved: boolean;
+  viewerMode: "public" | "owner";
 }) {
   const coverImage = coach.banner_image_url || "/images/soccer-training-hero.png";
   const hasMessagingBadge =
     coach.subscription_status === "active" ||
     coach.subscription_status === "trialing" ||
     Boolean(coach.admin_premium_access_until);
+  const isOwner = viewerMode === "owner";
 
   return (
     <section className="border-b border-slate-200 bg-white">
@@ -274,30 +318,53 @@ function SocialProfileHeader({
               </div>
             ) : null}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:flex">
-            <form action={toggleSavedCoach}>
-              <input type="hidden" name="coach_id" value={coach.id} />
-              <input type="hidden" name="coach_slug" value={coach.slug} />
-              <input type="hidden" name="saved" value={isSaved ? "1" : "0"} />
-              <button className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 hover:border-slate-500 sm:w-auto">
-                <Bookmark className={`h-4 w-4 ${isSaved ? "fill-[#2f6f5e] text-[#2f6f5e]" : ""}`} />
-                {isSaved ? "Saved" : "Save"}
-              </button>
-            </form>
-            <Link
-              href="#request-training"
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-[#12355b] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0d2948]"
-            >
-              <MessageSquare className="h-4 w-4" />
-              {requestCtaLabel}
-            </Link>
-            <Link
-              href="#sessions"
-              className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 hover:border-slate-500"
-            >
-              View Sessions
-            </Link>
-          </div>
+          {isOwner ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+              <Link
+                href="/coach/profile/edit"
+                className="inline-flex h-11 items-center justify-center rounded-md bg-[#12355b] px-4 text-sm font-semibold text-white hover:bg-[#0d2948]"
+              >
+                Edit profile
+              </Link>
+              <Link
+                href="/coach/calendar"
+                className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-950 hover:border-slate-500"
+              >
+                Calendar
+              </Link>
+              <Link
+                href={coach.is_published ? `/coaches/${coach.slug}` : "/coach/profile/preview"}
+                className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-950 hover:border-slate-500"
+              >
+                {coach.is_published ? "Public page" : "Preview"}
+              </Link>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+              <form action={toggleSavedCoach}>
+                <input type="hidden" name="coach_id" value={coach.id} />
+                <input type="hidden" name="coach_slug" value={coach.slug} />
+                <input type="hidden" name="saved" value={isSaved ? "1" : "0"} />
+                <button className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-950 hover:border-slate-500 sm:w-auto">
+                  <Bookmark className={`h-4 w-4 ${isSaved ? "fill-[#2f6f5e] text-[#2f6f5e]" : ""}`} />
+                  {isSaved ? "Saved" : "Save"}
+                </button>
+              </form>
+              <Link
+                href="#request-training"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#12355b] px-4 text-sm font-semibold text-white hover:bg-[#0d2948]"
+              >
+                <MessageSquare className="h-4 w-4" />
+                {requestCtaLabel}
+              </Link>
+              <Link
+                href="#sessions"
+                className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-950 hover:border-slate-500"
+              >
+                View Sessions
+              </Link>
+            </div>
+          )}
         </div>
         <nav className="flex gap-6 overflow-x-auto py-3 text-sm font-semibold text-slate-600">
           <Link href="#about" className="whitespace-nowrap text-[#12355b]">
@@ -306,9 +373,18 @@ function SocialProfileHeader({
           <Link href="#sessions" className="whitespace-nowrap hover:text-slate-950">
             Sessions
           </Link>
-          <Link href="#request-training" className="whitespace-nowrap hover:text-slate-950">
-            Request
+          <Link href="#availability" className="whitespace-nowrap hover:text-slate-950">
+            Availability
           </Link>
+          {isOwner ? (
+            <Link href="/coach/calendar" className="whitespace-nowrap hover:text-slate-950">
+              Calendar
+            </Link>
+          ) : (
+            <Link href="#request-training" className="whitespace-nowrap hover:text-slate-950">
+              Request
+            </Link>
+          )}
         </nav>
       </div>
     </section>
@@ -337,13 +413,14 @@ function RequestTrainingGate({
     const accountProfile = accountRequestProfileFrom({
       profile: accountState.profile,
       preference: accountPreference,
+      privateDetails: accountState.privateDetails,
     });
 
     if (!isAccountRequestProfileComplete(accountProfile)) {
       return (
         <VerificationPrompt
           title="Complete your player profile before requesting training."
-          body="Add the player name, parent or guardian name, player age, and current club/team once. Reppy will use it for future requests."
+          body="Add the player name, parent or guardian name, player date of birth, and current club/team once. Reppy will use it for future requests."
           href="/account/settings?error=missing-player-profile"
           label="Complete player profile"
         />

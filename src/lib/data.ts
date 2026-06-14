@@ -18,6 +18,7 @@ import type {
   Coach,
   CoachApplication,
   CoachAudience,
+  CoachAvailabilityBlock,
   CoachCredential,
   CoachProfileData,
   CoachService,
@@ -38,6 +39,15 @@ function sortByOrder<T extends { sort_order: number }>(items: T[]) {
 }
 
 const playerAccountRoles = ["parent", "adult_player"] as const;
+
+function isMissingAvailabilityTableError(error: { code?: string; message?: string }) {
+  return error.code === "42P01" || error.message?.includes("coach_availability_blocks");
+}
+
+function isMissingColumnError(error: { code?: string; message?: string; details?: string }) {
+  const text = `${error.message ?? ""} ${error.details ?? ""}`;
+  return error.code === "PGRST204" || /(column|schema cache|not find)/i.test(text);
+}
 
 const publicCoachBaseFields = [
   "id",
@@ -131,14 +141,22 @@ function filterAndSortByLocation(coaches: Coach[], location?: string | null) {
 
   if (!origin) {
     const textMatches = coaches.filter((coach) => coachMatchesLocationText(coach, cleanLocation));
-    return textMatches.length ? textMatches : coaches;
+    console.info("[coach search] Location input could not be geocoded; using text matches only", {
+      location: cleanLocation,
+      matchCount: textMatches.length,
+    });
+    return textMatches;
   }
 
   return coaches
     .map((coach) => {
-      const coachCoordinates = isValidCoordinates(coach) ? coach : null;
+      const coachCoordinates = isValidCoordinates(coach) ? coach : geocodeLocationInput(coachLocationText(coach));
 
       if (!coachCoordinates) {
+        console.info("[coach search] Coach has no usable coordinates for location search", {
+          coachId: coach.id,
+          location: coachLocationText(coach),
+        });
         return null;
       }
 
@@ -247,7 +265,7 @@ export async function getCoachProfileBySlug(slug: string): Promise<CoachProfileD
     return slug === kenProfile.coach.slug ? kenProfile : null;
   }
 
-  const [{ data: services }, { data: audiences }, { data: testimonials }, { data: credentials }] =
+  const [{ data: services }, { data: audiences }, { data: testimonials }, { data: credentials }, availabilityBlocks] =
     await Promise.all([
       supabase.from("coach_services").select("*").eq("coach_id", coach.id).order("sort_order"),
       supabase.from("coach_audiences").select("*").eq("coach_id", coach.id).order("sort_order"),
@@ -257,6 +275,7 @@ export async function getCoachProfileBySlug(slug: string): Promise<CoachProfileD
         .eq("coach_id", coach.id)
         .order("sort_order"),
       supabase.from("coach_credentials").select("*").eq("coach_id", coach.id).order("sort_order"),
+      getCoachAvailabilityBlocks(coach.id),
     ]);
 
   return {
@@ -265,12 +284,13 @@ export async function getCoachProfileBySlug(slug: string): Promise<CoachProfileD
     audiences: sortByOrder((audiences ?? []) as CoachAudience[]),
     testimonials: sortByOrder((testimonials ?? []) as CoachTestimonial[]),
     credentials: sortByOrder((credentials ?? []) as CoachCredential[]),
+    availabilityBlocks,
   };
 }
 
 async function getCoachProfileByCoach(coach: Coach): Promise<CoachProfileData> {
   const supabase = createSupabaseAdminClient();
-  const [{ data: services }, { data: audiences }, { data: testimonials }, { data: credentials }] =
+  const [{ data: services }, { data: audiences }, { data: testimonials }, { data: credentials }, availabilityBlocks] =
     await Promise.all([
       supabase.from("coach_services").select("*").eq("coach_id", coach.id).order("sort_order"),
       supabase.from("coach_audiences").select("*").eq("coach_id", coach.id).order("sort_order"),
@@ -280,6 +300,7 @@ async function getCoachProfileByCoach(coach: Coach): Promise<CoachProfileData> {
         .eq("coach_id", coach.id)
         .order("sort_order"),
       supabase.from("coach_credentials").select("*").eq("coach_id", coach.id).order("sort_order"),
+      getCoachAvailabilityBlocks(coach.id),
     ]);
 
   return {
@@ -288,6 +309,7 @@ async function getCoachProfileByCoach(coach: Coach): Promise<CoachProfileData> {
     audiences: sortByOrder((audiences ?? []) as CoachAudience[]),
     testimonials: sortByOrder((testimonials ?? []) as CoachTestimonial[]),
     credentials: sortByOrder((credentials ?? []) as CoachCredential[]),
+    availabilityBlocks,
   };
 }
 
@@ -624,6 +646,84 @@ export async function getCoachProfileByOwner(userId: string): Promise<CoachProfi
   return getCoachProfileByCoach(coach);
 }
 
+export async function getCoachAvailabilityBlocks(coachId: string): Promise<CoachAvailabilityBlock[]> {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("coach_availability_blocks")
+    .select("*")
+    .eq("coach_id", coachId)
+    .order("availability_date", { ascending: true })
+    .order("start_time", { ascending: true });
+
+  if (error) {
+    if (isMissingAvailabilityTableError(error)) {
+      console.warn("[coach availability] coach_availability_blocks table is missing; returning no availability.");
+      return [];
+    }
+
+    throw error;
+  }
+
+  return (data ?? []) as CoachAvailabilityBlock[];
+}
+
+export async function getCoachAvailabilityCount(coachId: string): Promise<number> {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return 0;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { count, error } = await supabase
+    .from("coach_availability_blocks")
+    .select("id", { count: "exact", head: true })
+    .eq("coach_id", coachId);
+
+  if (error) {
+    if (isMissingAvailabilityTableError(error)) {
+      console.warn("[coach availability] coach_availability_blocks table is missing; availability count is 0.");
+      return 0;
+    }
+
+    throw error;
+  }
+
+  return count ?? 0;
+}
+
+export async function getCoachCalendarTrainingRequests(coachId: string): Promise<TrainingRequest[]> {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("training_requests")
+    .select("*")
+    .eq("coach_id", coachId)
+    .not("requested_date", "is", null)
+    .in("status", ["pending", "accepted", "new", "scheduled"])
+    .order("requested_date", { ascending: true })
+    .order("requested_start_time", { ascending: true });
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      console.warn("[coach calendar] Training request schedule columns are missing; returning no calendar requests.");
+      return [];
+    }
+
+    throw error;
+  }
+
+  return (data ?? []) as TrainingRequest[];
+}
+
 export async function getUserCoachingPreference(userId: string): Promise<UserCoachingPreference | null> {
   noStore();
   const supabase = createSupabaseAdminClient();
@@ -823,7 +923,7 @@ export async function getCoachConversationThread({
       supabase
         .from("conversation_private_details")
         .select(
-          "conversation_id, requester_display_name, guardian_name, service_id, service_title, service_description, preferred_days_times, current_level",
+          "conversation_id, requester_display_name, guardian_name, service_id, service_title, service_description, selected_availability_block_id, requested_date, requested_start_time, requested_end_time, timezone, player_age_at_request, preferred_days_times, current_level, current_team",
         )
         .eq("conversation_id", conversationId)
         .maybeSingle(),

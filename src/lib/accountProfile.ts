@@ -1,10 +1,12 @@
-import type { UserCoachingPreference, UserProfile } from "./types";
+import type { AccountPrivateDetails, UserCoachingPreference, UserProfile } from "./types";
 
 export type AccountRequestProfile = {
   role: "parent" | "adult_player";
   playerName: string;
   guardianName: string;
+  playerDateOfBirth: string;
   playerAge: string;
+  playerAgeAtRequest: number | null;
   currentTeam: string;
   preferredLocation: string;
   skillLevel: string;
@@ -17,19 +19,60 @@ function clean(value: string | null | undefined) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+export function calculateAgeFromDateOfBirth(dateOfBirth: string, at = new Date()) {
+  if (!dateOfBirth) {
+    return null;
+  }
+
+  const [year, month, day] = dateOfBirth.split("-").map(Number);
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  const birthDate = new Date(year, month - 1, day);
+  if (
+    birthDate.getFullYear() !== year ||
+    birthDate.getMonth() !== month - 1 ||
+    birthDate.getDate() !== day ||
+    birthDate > at
+  ) {
+    return null;
+  }
+
+  let age = at.getFullYear() - birthDate.getFullYear();
+  const birthdayThisYear = new Date(at.getFullYear(), month - 1, day);
+  if (at < birthdayThisYear) {
+    age -= 1;
+  }
+
+  return age;
+}
+
+export function isReasonablePlayerDateOfBirth(dateOfBirth: string) {
+  const age = calculateAgeFromDateOfBirth(dateOfBirth);
+  return age !== null && age >= 3 && age <= 100;
+}
+
 export function accountRequestProfileFrom({
   profile,
   preference,
+  privateDetails,
 }: {
   profile: UserProfile;
   preference: UserCoachingPreference | null;
+  privateDetails?: AccountPrivateDetails | null;
 }): AccountRequestProfile {
   const playerName = clean(preference?.player_name) || clean(profile.display_name);
+  const playerDateOfBirth = clean(privateDetails?.player_date_of_birth) || clean(preference?.player_birth_date);
+  const calculatedAge = calculateAgeFromDateOfBirth(playerDateOfBirth);
+  const fallbackAge = clean(preference?.player_age) || clean(preference?.age_group);
   return {
     role: profile.role === "adult_player" ? "adult_player" : "parent",
     playerName,
     guardianName: clean(preference?.guardian_name),
-    playerAge: clean(preference?.player_age) || clean(preference?.age_group),
+    playerDateOfBirth,
+    playerAge: calculatedAge === null ? fallbackAge : String(calculatedAge),
+    playerAgeAtRequest: calculatedAge,
     currentTeam: clean(preference?.current_team),
     preferredLocation: clean(preference?.location_text),
     skillLevel: clean(preference?.skill_level),
@@ -50,8 +93,8 @@ export function missingAccountRequestProfileFields(accountProfile: AccountReques
     missing.push("guardian_name");
   }
 
-  if (!accountProfile.playerAge) {
-    missing.push("player_age");
+  if (!accountProfile.playerDateOfBirth || accountProfile.playerAgeAtRequest === null) {
+    missing.push("player_date_of_birth");
   }
 
   if (!accountProfile.currentTeam) {
@@ -66,7 +109,7 @@ export function isAccountRequestProfileComplete(accountProfile: AccountRequestPr
 }
 
 export function ageRangeFromProfile(accountProfile: AccountRequestProfile) {
-  const parsedAge = Number.parseInt(accountProfile.playerAge, 10);
+  const parsedAge = accountProfile.playerAgeAtRequest ?? Number.parseInt(accountProfile.playerAge, 10);
   if (!Number.isFinite(parsedAge)) {
     return accountProfile.playerAge;
   }
@@ -87,7 +130,7 @@ export function ageRangeFromProfile(accountProfile: AccountRequestProfile) {
 }
 
 export function isMinorFromProfile(accountProfile: AccountRequestProfile) {
-  const parsedAge = Number.parseInt(accountProfile.playerAge, 10);
+  const parsedAge = accountProfile.playerAgeAtRequest ?? Number.parseInt(accountProfile.playerAge, 10);
   return Number.isFinite(parsedAge) ? parsedAge < 18 : accountProfile.role === "parent";
 }
 

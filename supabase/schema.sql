@@ -97,7 +97,7 @@ create table if not exists training_requests (
   preferred_location text,
   preferred_days_times text,
   message text,
-  status text default 'new',
+  status text default 'pending',
   client_request_id uuid,
   selected_availability_block_id uuid references coach_availability_blocks(id) on delete set null,
   requested_date date,
@@ -241,6 +241,7 @@ create table if not exists account_private_details (
   user_id uuid primary key references auth.users(id) on delete cascade,
   phone_e164 text,
   phone_verified_at timestamp with time zone,
+  player_date_of_birth date,
   account_type text,
   otp_send_count integer not null default 0,
   otp_verify_attempt_count integer not null default 0,
@@ -251,6 +252,8 @@ create table if not exists account_private_details (
   constraint account_private_details_account_type_check
     check (account_type is null or account_type in ('parent', 'adult_player'))
 );
+
+alter table account_private_details add column if not exists player_date_of_birth date;
 
 create table if not exists user_coaching_preferences (
   user_id uuid primary key references auth.users(id) on delete cascade,
@@ -364,10 +367,25 @@ create table if not exists conversation_private_details (
   service_id uuid references coach_services(id) on delete set null,
   service_title text,
   service_description text,
+  selected_availability_block_id uuid references coach_availability_blocks(id) on delete set null,
+  requested_date date,
+  requested_start_time time,
+  requested_end_time time,
+  timezone text default 'America/New_York',
+  player_age_at_request integer,
   exact_location text,
   preferred_days_times text,
-  current_level text
+  current_level text,
+  current_team text
 );
+
+alter table conversation_private_details add column if not exists selected_availability_block_id uuid references coach_availability_blocks(id) on delete set null;
+alter table conversation_private_details add column if not exists requested_date date;
+alter table conversation_private_details add column if not exists requested_start_time time;
+alter table conversation_private_details add column if not exists requested_end_time time;
+alter table conversation_private_details add column if not exists timezone text default 'America/New_York';
+alter table conversation_private_details add column if not exists player_age_at_request integer;
+alter table conversation_private_details add column if not exists current_team text;
 
 create table if not exists messages (
   id uuid primary key default gen_random_uuid(),
@@ -575,6 +593,12 @@ create index if not exists account_private_details_phone_idx
   on account_private_details(phone_e164)
   where phone_e164 is not null;
 create index if not exists training_requests_service_idx on training_requests(service_id);
+create index if not exists training_requests_coach_requested_date_idx
+  on training_requests(coach_id, requested_date, requested_start_time)
+  where requested_date is not null;
+create index if not exists account_private_details_player_dob_idx
+  on account_private_details(player_date_of_birth)
+  where player_date_of_birth is not null;
 
 create or replace function public.coach_has_message_access(target_coach_user_id uuid)
 returns boolean

@@ -128,11 +128,13 @@ export async function ensureAccountPrivateDetails({
   accountType,
   phoneE164,
   phoneVerifiedAt,
+  playerDateOfBirth,
 }: {
   userId: string;
   accountType: "parent" | "adult_player";
   phoneE164?: string | null;
   phoneVerifiedAt?: string | null;
+  playerDateOfBirth?: string | null;
 }) {
   const supabase = createSupabaseAdminClient();
   const existing = await getAccountPrivateDetails(userId);
@@ -140,20 +142,38 @@ export async function ensureAccountPrivateDetails({
   const resolvedPhoneVerifiedAt = existing?.phone_verified_at ?? phoneVerifiedAt ?? bypassVerifiedAt();
   const resolvedPhone =
     phoneE164 === undefined ? (existing?.phone_e164 ?? null) : (phoneE164 || existing?.phone_e164 || null);
-  const { data, error } = await supabase
+  const resolvedPlayerDateOfBirth =
+    playerDateOfBirth === undefined
+      ? (existing?.player_date_of_birth ?? null)
+      : (playerDateOfBirth || existing?.player_date_of_birth || null);
+  const privateDetailsPayload = {
+    user_id: userId,
+    phone_e164: resolvedPhone,
+    phone_verified_at: resolvedPhoneVerifiedAt,
+    player_date_of_birth: resolvedPlayerDateOfBirth,
+    account_type: accountType,
+    updated_at: now,
+  };
+  let { data, error } = await supabase
     .from("account_private_details")
     .upsert(
-      {
-        user_id: userId,
-        phone_e164: resolvedPhone,
-        phone_verified_at: resolvedPhoneVerifiedAt,
-        account_type: accountType,
-        updated_at: now,
-      },
+      privateDetailsPayload,
       { onConflict: "user_id" },
     )
     .select("*")
     .single<AccountPrivateDetails>();
+
+  if (error && /player_date_of_birth|schema cache|column/i.test(error.message)) {
+    const legacyPayload: Record<string, string | null> = { ...privateDetailsPayload };
+    delete legacyPayload.player_date_of_birth;
+    const fallback = await supabase
+      .from("account_private_details")
+      .upsert(legacyPayload, { onConflict: "user_id" })
+      .select("*")
+      .single<AccountPrivateDetails>();
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) {
     throw error;

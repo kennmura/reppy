@@ -30,13 +30,13 @@ test("unified sign in page defaults to player account and links coach login", as
   await expect(page.getByRole("heading", { name: "Coach Account" })).toBeVisible();
 });
 
-test("coach discovery supports sport and location filters without fake distance", async ({ page }) => {
+test("coach discovery supports sport and location filters with real distance lookup", async ({ page }) => {
   await page.goto("/coaches?sport=soccer&location=02453&training_type=private");
 
   await expect(page.getByLabel("Sport")).toHaveValue("soccer");
   await expect(page.getByLabel("Location")).toHaveValue("02453");
   await expect(page.getByText("Enter your ZIP code or location to find coaches within 30 miles.")).toBeVisible();
-  await expect(page.getByText("We could not calculate distance for that location yet.")).toBeVisible();
+  await expect(page.getByText("We could not find that location.")).toHaveCount(0);
 });
 
 test("coach service cards are selectable", async ({ page }) => {
@@ -53,6 +53,7 @@ test("player registration catches password mismatch before submit", async ({ pag
 
   await page.getByLabel("Player name").fill("Test Player");
   await page.getByLabel("Parent/guardian name").fill("Test Parent");
+  await page.getByLabel("Player date of birth").fill("2010-01-15");
   await page.getByLabel("Email").fill("test-parent@example.com");
   await page.getByLabel("Mobile phone number").fill("(555) 555-5555");
   await page.getByLabel("Password", { exact: true }).fill("password123");

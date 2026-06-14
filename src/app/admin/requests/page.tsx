@@ -5,7 +5,7 @@ import { getAdminUserOrRedirect } from "@/lib/auth";
 import { getAdminTrainingRequests } from "@/lib/data";
 import type { TrainingRequest } from "@/lib/types";
 
-const statuses: TrainingRequest["status"][] = ["new", "contacted", "scheduled", "closed"];
+const statuses: TrainingRequest["status"][] = ["pending", "accepted", "declined", "cancelled", "completed"];
 
 export default async function AdminRequestsPage() {
   await getAdminUserOrRedirect();
@@ -47,7 +47,8 @@ function RequestPanel({ request }: { request: TrainingRequest }) {
         <p className="text-sm text-slate-500">{new Date(request.created_at).toLocaleString()}</p>
       </div>
       <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
-        <Detail label="Player age" value={request.player_age} />
+        <Detail label="Player age" value={request.player_age_at_request?.toString() ?? request.player_age} />
+        <Detail label="Requested time" value={formatRequestedTime(request)} />
         <Detail label="Current level/team" value={request.current_level} />
         <Detail label="Preferred location" value={request.preferred_location} />
         <Detail label="Preferred days/times" value={request.preferred_days_times} />
@@ -90,4 +91,35 @@ function Detail({ label, value, wide = false }: { label: string; value: string |
       <dd className="mt-1 whitespace-pre-wrap leading-6 text-slate-700">{value || "Not provided"}</dd>
     </div>
   );
+}
+
+function formatRequestedTime(request: TrainingRequest) {
+  if (!request.requested_date) {
+    return null;
+  }
+
+  const [year, month, day] = request.requested_date.split("-").map(Number);
+  const dateLabel = new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+  if (!request.requested_start_time) {
+    return dateLabel;
+  }
+
+  return `${dateLabel}, ${formatTime(request.requested_start_time)} to ${formatTime(request.requested_end_time ?? "")} ${request.timezone ?? ""}`.trim();
+}
+
+function formatTime(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  const [hourText, minuteText] = value.split(":");
+  return new Date(2026, 0, 1, Number(hourText), Number(minuteText)).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

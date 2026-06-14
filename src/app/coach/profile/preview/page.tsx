@@ -31,7 +31,7 @@ export default async function CoachProfilePreviewPage() {
           </div>
         </div>
       </div>
-      <CoachProfile profile={profile} />
+      <CoachProfile profile={profile} viewerMode="owner" />
     </main>
   );
 }

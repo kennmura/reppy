@@ -29,7 +29,7 @@ export function AccountShell({
           <div className="flex items-center gap-2">
             <NotificationBell userId={userId} initialCount={notificationCount} href="/account/notifications" />
             <form action={signOutAccount}>
-              <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-500">
+              <button className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-slate-500">
                 Sign out
               </button>
             </form>
@@ -43,7 +43,7 @@ export function AccountShell({
               <Link
                 key={link.href}
                 href={link.href}
-                className="whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 {link.label}
               </Link>

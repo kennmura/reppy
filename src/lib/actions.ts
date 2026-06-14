@@ -10,6 +10,7 @@ import {
   getCoachUserOrRedirect,
   repairAccountForAuthUser,
 } from "./auth";
+import { calculateAgeFromDateOfBirth, isReasonablePlayerDateOfBirth } from "./accountProfile";
 import { isPhoneVerificationBypassed } from "./accountConfig";
 import { getMessageAccess, startCoachTrial } from "./entitlements";
 import { isMissingCoachLocationColumnError, resolveCoachLocationFields } from "./location";
@@ -55,6 +56,18 @@ function safeReturnPath(value: string) {
   return value;
 }
 
+function safeCoachReturnPath(value: string, fallback = "/coach/dashboard") {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("://")) {
+    return fallback;
+  }
+
+  if (!value.startsWith("/coach/")) {
+    return fallback;
+  }
+
+  return value;
+}
+
 function safeAccountNext(value: string) {
   if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("://")) {
     return "/account/dashboard";
@@ -72,6 +85,14 @@ function safeLoginPath(value: string, fallback: string) {
 function optionalInteger(value: string) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function validIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function validTime(value: string) {
+  return /^\d{2}:\d{2}$/.test(value);
 }
 
 function arrayTextValues(formData: FormData, key: string) {
@@ -225,6 +246,12 @@ export async function signOutAccount() {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
   redirect("/account/login");
+}
+
+export async function signOutCurrentUser() {
+  const supabase = await createSupabaseServerClient();
+  await supabase.auth.signOut();
+  redirect("/");
 }
 
 export async function signInAccount(formData: FormData) {
@@ -833,6 +860,7 @@ export async function saveCoachProfile(formData: FormData) {
     zip_code: resolvedLocation.zip_code,
     latitude: resolvedLocation.latitude,
     longitude: resolvedLocation.longitude,
+    timezone: textValue(formData, "timezone") || coach.timezone || "America/New_York",
     service_radius_miles: Math.max(1, Math.min(100, serviceRadiusMiles)),
     service_area: textValue(formData, "service_area") || null,
     pricing_text: textValue(formData, "pricing_text") || "Pricing available upon request.",
@@ -867,6 +895,7 @@ export async function saveCoachProfile(formData: FormData) {
     delete legacyPayload.longitude;
     delete legacyPayload.public_location;
     delete legacyPayload.service_radius_miles;
+    delete legacyPayload.timezone;
     const fallback = await supabase.from("coaches").update(legacyPayload).eq("id", coach.id);
     updateError = fallback.error;
   }
@@ -927,11 +956,118 @@ export async function saveCoachProfile(formData: FormData) {
   redirect(`${returnTo}?${intent === "submit" ? "submitted=1" : "saved=1"}`);
 }
 
+export async function saveCoachAvailabilityBlock(formData: FormData) {
+  const { user, coach, coachUserId } = await getCoachContextOrRedirect();
+  const supabase = createSupabaseAdminClient();
+  const blockId = textValue(formData, "block_id");
+  const availabilityDate = textValue(formData, "availability_date");
+  const startTime = textValue(formData, "start_time");
+  const endTime = textValue(formData, "end_time");
+  const note = textValue(formData, "note");
+  const timezone = textValue(formData, "timezone") || "America/New_York";
+  const returnTo = safeCoachReturnPath(textValue(formData, "return_to"), "/coach/calendar");
+  const redirectDate = validIsoDate(availabilityDate) ? availabilityDate : "";
+  const redirectPath = `${returnTo.split("?")[0]}${redirectDate ? `?date=${encodeURIComponent(redirectDate)}` : ""}`;
+
+  if (!validIsoDate(availabilityDate) || !validTime(startTime) || !validTime(endTime)) {
+    redirect(`${redirectPath}${redirectPath.includes("?") ? "&" : "?"}error=invalid-time`);
+  }
+
+  if (endTime <= startTime) {
+    redirect(`${redirectPath}${redirectPath.includes("?") ? "&" : "?"}error=end-before-start`);
+  }
+
+  const payload = {
+    coach_id: coach.id,
+    coach_user_id: coachUserId ?? user.id,
+    availability_date: availabilityDate,
+    start_time: startTime,
+    end_time: endTime,
+    timezone,
+    note: note || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (blockId) {
+    const { error } = await supabase
+      .from("coach_availability_blocks")
+      .update(payload)
+      .eq("id", blockId)
+      .eq("coach_id", coach.id);
+
+    if (error) {
+      console.error("[coach availability] update failed", {
+        coachId: coach.id,
+        blockId,
+        message: error.message,
+        code: error.code,
+      });
+      redirect(`${redirectPath}${redirectPath.includes("?") ? "&" : "?"}error=save-failed`);
+    }
+  } else {
+    const { error } = await supabase.from("coach_availability_blocks").insert({
+      ...payload,
+      created_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      console.error("[coach availability] insert failed", {
+        coachId: coach.id,
+        message: error.message,
+        code: error.code,
+      });
+      redirect(`${redirectPath}${redirectPath.includes("?") ? "&" : "?"}error=save-failed`);
+    }
+  }
+
+  revalidatePath("/coach/calendar");
+  revalidatePath("/coach/dashboard");
+  revalidatePath("/coach/profile");
+  revalidatePath(`/coaches/${coach.slug}`);
+  redirect(`${redirectPath}${redirectPath.includes("?") ? "&" : "?"}saved=1`);
+}
+
+export async function deleteCoachAvailabilityBlock(formData: FormData) {
+  const { coach } = await getCoachContextOrRedirect();
+  const supabase = createSupabaseAdminClient();
+  const blockId = textValue(formData, "block_id");
+  const availabilityDate = textValue(formData, "availability_date");
+  const returnTo = safeCoachReturnPath(textValue(formData, "return_to"), "/coach/calendar");
+  const redirectDate = validIsoDate(availabilityDate) ? availabilityDate : "";
+  const redirectPath = `${returnTo.split("?")[0]}${redirectDate ? `?date=${encodeURIComponent(redirectDate)}` : ""}`;
+
+  if (!blockId) {
+    redirect(`${redirectPath}${redirectPath.includes("?") ? "&" : "?"}error=missing-block`);
+  }
+
+  const { error } = await supabase
+    .from("coach_availability_blocks")
+    .delete()
+    .eq("id", blockId)
+    .eq("coach_id", coach.id);
+
+  if (error) {
+    console.error("[coach availability] delete failed", {
+      coachId: coach.id,
+      blockId,
+      message: error.message,
+      code: error.code,
+    });
+    redirect(`${redirectPath}${redirectPath.includes("?") ? "&" : "?"}error=delete-failed`);
+  }
+
+  revalidatePath("/coach/calendar");
+  revalidatePath("/coach/dashboard");
+  revalidatePath("/coach/profile");
+  revalidatePath(`/coaches/${coach.slug}`);
+  redirect(`${redirectPath}${redirectPath.includes("?") ? "&" : "?"}deleted=1`);
+}
+
 export async function updateAccountProfile(formData: FormData) {
   const { user, profile } = await getAccountContextOrRedirect();
   const playerName = textValue(formData, "player_name");
   const guardianName = textValue(formData, "guardian_name");
-  const playerAge = textValue(formData, "player_age");
+  const playerDateOfBirth = textValue(formData, "player_date_of_birth");
   const currentTeam = textValue(formData, "current_team");
 
   if (!playerName) {
@@ -942,11 +1078,16 @@ export async function updateAccountProfile(formData: FormData) {
     redirect("/account/settings?error=missing-guardian");
   }
 
-  if (!playerAge || !currentTeam) {
+  if (!playerDateOfBirth || !currentTeam) {
     redirect("/account/settings?error=missing-player-profile");
   }
 
+  if (!isReasonablePlayerDateOfBirth(playerDateOfBirth)) {
+    redirect("/account/settings?error=invalid-dob");
+  }
+
   const supabase = createSupabaseAdminClient();
+  const playerAgeAtSave = calculateAgeFromDateOfBirth(playerDateOfBirth);
   const { error: profileError } = await supabase
     .from("user_profiles")
     .update({ display_name: playerName, updated_at: new Date().toISOString() })
@@ -961,8 +1102,8 @@ export async function updateAccountProfile(formData: FormData) {
       user_id: user.id,
       player_name: playerName,
       guardian_name: guardianName || null,
-      player_age: playerAge,
-      player_birth_date: textValue(formData, "player_birth_date") || null,
+      player_age: playerAgeAtSave === null ? null : String(playerAgeAtSave),
+      player_birth_date: playerDateOfBirth,
       current_team: currentTeam,
       location_text: textValue(formData, "location_text") || null,
       skill_level: textValue(formData, "skill_level") || null,
@@ -980,6 +1121,25 @@ export async function updateAccountProfile(formData: FormData) {
       userId: user.id,
       error: preferenceError.message,
       code: preferenceError.code,
+    });
+    redirect("/account/settings?error=profile-save-failed");
+  }
+
+  const { error: privateDetailsError } = await supabase.from("account_private_details").upsert(
+    {
+      user_id: user.id,
+      player_date_of_birth: playerDateOfBirth,
+      account_type: profile.role,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+
+  if (privateDetailsError) {
+    console.error("[updateAccountProfile] Failed to save private player DOB", {
+      userId: user.id,
+      error: privateDetailsError.message,
+      code: privateDetailsError.code,
     });
     redirect("/account/settings?error=profile-save-failed");
   }
@@ -1134,7 +1294,7 @@ export async function updateRequestStatus(formData: FormData) {
   const id = textValue(formData, "id");
   const status = textValue(formData, "status") as TrainingRequest["status"];
 
-  if (!id || !["new", "contacted", "scheduled", "closed"].includes(status)) {
+  if (!id || !["pending", "accepted", "declined", "cancelled", "completed", "new", "contacted", "scheduled", "closed"].includes(status)) {
     throw new Error("Invalid request status update.");
   }
 

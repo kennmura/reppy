@@ -10,6 +10,7 @@ import {
   getAuthenticatedUserOrRedirect,
 } from "./auth";
 import { isPhoneVerificationBypassed } from "./accountConfig";
+import { calculateAgeFromDateOfBirth, isReasonablePlayerDateOfBirth } from "./accountProfile";
 import {
   createSupabaseAdminClient,
   createSupabaseServerClient,
@@ -40,7 +41,7 @@ function safeNext(value: string, fallback = "/account/dashboard") {
 
 function redirectAccountRegisterWithError(formData: FormData, error: string, next: string): never {
   const params = new URLSearchParams({ error });
-  const preservedKeys = ["player_name", "guardian_name", "display_name", "email", "phone", "role"];
+  const preservedKeys = ["player_name", "guardian_name", "player_date_of_birth", "display_name", "email", "phone", "role"];
 
   for (const key of preservedKeys) {
     const value = textValue(formData, key);
@@ -265,9 +266,15 @@ async function registerUser({
 }
 
 export async function registerCoach(formData: FormData) {
-  const location = textValue(formData, "coach_location");
+  const city = textValue(formData, "city");
+  const state = textValue(formData, "state").toUpperCase();
+  const zipCode = textValue(formData, "zip_code");
+  const location = [city, state].filter(Boolean).join(", ") || zipCode;
+  const latitude = textValue(formData, "latitude");
+  const longitude = textValue(formData, "longitude");
+  const timezone = textValue(formData, "timezone") || "America/New_York";
 
-  if (!location) {
+  if (!city || !state || !zipCode) {
     redirect("/coach/register?error=missing-location");
   }
 
@@ -279,6 +286,9 @@ export async function registerCoach(formData: FormData) {
     onboardingPath: "/coach/onboarding",
     extraMetadata: {
       coach_location: location,
+      coach_city: city,
+      coach_state: state,
+      coach_zip_code: zipCode,
     },
     afterProfileCreated: async ({ userId, displayName, email }) => {
       await seedCoachProfileFromSignup({
@@ -286,6 +296,12 @@ export async function registerCoach(formData: FormData) {
         displayName,
         email,
         location,
+        city,
+        state,
+        zipCode,
+        latitude,
+        longitude,
+        timezone,
       });
     },
   });
@@ -296,15 +312,30 @@ async function seedCoachProfileFromSignup({
   displayName,
   email,
   location,
+  city,
+  state,
+  zipCode,
+  latitude,
+  longitude,
+  timezone,
 }: {
   userId: string;
   displayName: string;
   email: string;
   location: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  latitude: string;
+  longitude: string;
+  timezone: string;
 }) {
   const supabase = createSupabaseAdminClient();
   const now = new Date().toISOString();
-  const resolvedLocation = resolveCoachLocationFields({ location });
+  const resolvedLocation = resolveCoachLocationFields({ location, city, state, zipCode });
+  const parsedLatitude = Number.parseFloat(latitude);
+  const parsedLongitude = Number.parseFloat(longitude);
+  const hasBrowserCoordinates = Number.isFinite(parsedLatitude) && Number.isFinite(parsedLongitude);
   const slug = `${slugify(displayName || email || "coach") || "coach"}-${userId.slice(0, 8)}`;
   const payload = {
     user_id: userId,
@@ -316,8 +347,9 @@ async function seedCoachProfileFromSignup({
     city: resolvedLocation.city,
     state: resolvedLocation.state,
     zip_code: resolvedLocation.zip_code,
-    latitude: resolvedLocation.latitude,
-    longitude: resolvedLocation.longitude,
+    latitude: hasBrowserCoordinates ? parsedLatitude : resolvedLocation.latitude,
+    longitude: hasBrowserCoordinates ? parsedLongitude : resolvedLocation.longitude,
+    timezone,
     service_radius_miles: 30,
     pricing_text: "Pricing available upon request.",
     profile_status: "draft",
@@ -350,6 +382,7 @@ async function seedCoachProfileFromSignup({
     delete legacyPayload.longitude;
     delete legacyPayload.public_location;
     delete legacyPayload.service_radius_miles;
+    delete legacyPayload.timezone;
     const legacyWrite = existing
       ? supabase.from("coaches").update(legacyPayload).eq("id", existing.id)
       : supabase.from("coaches").insert({ ...legacyPayload, created_at: now });
@@ -378,13 +411,18 @@ export async function registerAccount(formData: FormData) {
 
   const playerName = textValue(formData, "player_name") || textValue(formData, "display_name");
   const guardianName = textValue(formData, "guardian_name");
+  const playerDateOfBirth = textValue(formData, "player_date_of_birth");
   const displayName = playerName;
   const email = textValue(formData, "email").toLowerCase();
   const { password, error: passwordError } = passwordPair(formData);
   const acceptedTerms = formData.get("terms") === "on";
 
-  if (!playerName || !email || !password || (role === "parent" && !guardianName)) {
+  if (!playerName || !playerDateOfBirth || !email || !password || (role === "parent" && !guardianName)) {
     redirectAccountRegisterWithError(formData, "missing-fields", next);
+  }
+
+  if (!isReasonablePlayerDateOfBirth(playerDateOfBirth)) {
+    redirectAccountRegisterWithError(formData, "invalid-dob", next);
   }
 
   if (passwordError) {
@@ -490,6 +528,7 @@ export async function registerAccount(formData: FormData) {
       accountType: role,
       phoneE164: phone,
       phoneVerifiedAt: phoneBypassed ? new Date().toISOString() : data.user.phone_confirmed_at ?? null,
+      playerDateOfBirth,
     });
   } catch (privateDetailsError) {
     console.error("[registerAccount] Failed to upsert private account details", {
@@ -509,6 +548,8 @@ export async function registerAccount(formData: FormData) {
         user_id: data.user.id,
         player_name: playerName,
         guardian_name: guardianName || null,
+        player_age: String(calculateAgeFromDateOfBirth(playerDateOfBirth) ?? ""),
+        player_birth_date: playerDateOfBirth,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },

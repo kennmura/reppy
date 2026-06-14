@@ -22,6 +22,8 @@ assert.match(
   "training form must mark preferred days/times required to match the API",
 );
 assert.match(requestForm, /name="service_id"/, "training form must submit selected service id");
+assert.match(requestForm, /name="requested_date"/, "training form must submit requested dates from availability");
+assert.match(requestForm, /reppy:availability-selected/, "training form must react to selected availability");
 assert.match(requestForm, /Player profile/, "training form must show profile-owned player details");
 assert.doesNotMatch(requestForm, /name="name"/, "training form must not ask for player name every request");
 assert.doesNotMatch(requestForm, /name="player_age"/, "training form must not ask for player age every request");
@@ -37,13 +39,29 @@ for (const code of [
 ]) {
   assert.match(trainingApi, new RegExp(code), `training API must standardize ${code}`);
 }
-assert.match(trainingApi, /create_training_request_verified/, "training API must use the idempotent verified RPC");
+assert.match(trainingApi, /\.from\("training_requests"\)[\s\S]*client_request_id/, "training API must do an idempotency lookup");
+assert.doesNotMatch(trainingApi, /create_training_request_verified/, "training API must not depend on the legacy RPC");
 assert.match(trainingApi, /isPhoneVerificationBypassed/, "training API must honor the temporary phone bypass");
-assert.match(trainingApi, /repairAccountForAuthUser/, "training API must repair account rows before calling the RPC");
+assert.match(trainingApi, /repairAccountForAuthUser/, "training API must repair account rows before creating requests");
 assert.match(trainingApi, /accountRequestProfileFrom/, "training API must derive player profile fields server-side");
+assert.match(trainingApi, /playerAgeAtRequest/, "training API must derive player age at request time");
 assert.match(trainingApi, /SERVICE_COACH_MISMATCH/, "training API must verify selected service ownership");
+assert.match(trainingApi, /selectedAvailabilityBlockId/, "training API must verify selected availability ownership");
+assert.match(trainingApi, /createNotification/, "training API must notify coaches after successful request creation");
 assert.match(trainingApi, /requestId/, "training API success response must include requestId");
 assert.match(trainingApi, /conversationId/, "training API success response must include conversationId");
+
+const accountProfile = read("src/lib/accountProfile.ts");
+assert.match(accountProfile, /calculateAgeFromDateOfBirth/, "account profile helper must calculate age from DOB");
+assert.match(accountProfile, /playerDateOfBirth/, "account profile helper must require player DOB");
+
+const accountRegisterForm = read("src/components/account/AccountRegisterForm.tsx");
+assert.match(accountRegisterForm, /Player date of birth/, "player signup must ask for player DOB");
+assert.doesNotMatch(accountRegisterForm, /Player age/, "player signup must not ask for player age");
+
+const accountSettings = read("src/app/account/settings/page.tsx");
+assert.match(accountSettings, /Player date of birth/, "account settings must ask for player DOB");
+assert.match(accountSettings, /Calculated player age/, "account settings must show calculated age");
 
 const serviceSelection = read("src/components/ServiceSelectionPanel.tsx");
 assert.match(serviceSelection, /type="button"/, "service cards must be clickable buttons");
@@ -52,7 +70,11 @@ assert.match(serviceSelection, /reppy:service-selected/, "service cards must not
 
 const authMenu = read("src/components/AuthMenu.tsx");
 assert.match(authMenu, /href="\/account\/login"/, "header auth CTA must default to player/parent login");
-assert.match(authMenu, /Coach Sign up/, "header auth menu must expose coach signup");
+assert.match(authMenu, /Player\/Parent Sign in/, "header auth menu must expose player/parent signin");
+assert.match(authMenu, /Coach Sign in/, "header auth menu must expose coach signin");
+assert.doesNotMatch(authMenu, /Player\/Parent Sign up/, "header auth menu must not expose player signup");
+assert.doesNotMatch(authMenu, /Coach Sign up/, "header auth menu must not expose coach signup");
+assert.match(authMenu, /setTimeout/, "header auth menu must delay hover close to avoid flicker");
 
 const accountConfig = read("src/lib/accountConfig.ts");
 assert.match(accountConfig, /REPPY_DISABLE_PHONE_VERIFICATION/, "account config must define the phone bypass env flag");
@@ -67,6 +89,17 @@ assert.match(authActions, /ensureAccountPrivateDetails/, "account registration m
 const actions = read("src/lib/actions.ts");
 assert.match(actions, /repairAccountForAuthUser/, "account sign-in must repair profile and private details");
 assert.match(actions, /isPhoneVerificationBypassed/, "account sign-in must honor the temporary phone bypass");
+assert.match(actions, /saveCoachAvailabilityBlock/, "coach availability must have a save server action");
+assert.match(actions, /deleteCoachAvailabilityBlock/, "coach availability must have a delete server action");
+assert.match(actions, /\.eq\("coach_id", coach\.id\)/, "coach availability actions must scope writes to the signed-in coach");
+
+const coachDashboard = read("src/app/coach/dashboard/page.tsx");
+assert.match(coachDashboard, /getCoachAvailabilityBlocks/, "coach dashboard must use saved availability blocks");
+assert.match(coachDashboard, /href: "\/coach\/calendar"/, "coach next steps must link availability to calendar");
+
+const coachShell = read("src/components/coach/CoachSidebarNav.tsx");
+assert.match(coachShell, /href: "\/coach\/calendar"/, "coach sidebar must include Calendar");
+assert.match(coachShell, /aria-current/, "coach sidebar must expose active page state");
 
 const health = read("src/app/api/health/supabase/route.ts");
 assert.match(health, /publicConfig/, "health endpoint must report public Supabase config state");
@@ -74,6 +107,8 @@ assert.match(health, /adminConfig/, "health endpoint must report admin Supabase 
 assert.match(health, /phoneVerificationBypass/, "health endpoint must report phone verification bypass state");
 assert.match(health, /playerProfileRequiredColumns/, "health endpoint must report player profile schema state");
 assert.match(health, /trainingRequestRequiredColumns/, "health endpoint must report request schema state");
+assert.match(health, /coachAvailabilityRequiredColumns/, "health endpoint must report availability schema state");
+assert.match(health, /coachLocationRequiredColumns/, "health endpoint must report coach location schema state");
 
 const realtime = read("src/components/RealtimeRefresh.tsx");
 assert.match(realtime, /conversationId\?: string/, "RealtimeRefresh must accept an optional conversationId");
@@ -86,5 +121,10 @@ assert.match(realtime, /removeChannel/, "RealtimeRefresh must clean up channels"
 const data = read("src/lib/data.ts");
 assert.match(data, /\.gt\("unread_count", 0\)/, "mark-read updates must only write when unread_count is positive");
 assert.match(data, /\.eq\("is_unread_by_coach", true\)/, "legacy coach unread field must only update when currently unread");
+assert.match(data, /geocodeLocationInput\(coachLocationText\(coach\)\)/, "location search must resolve coach city/state/ZIP when coordinates are missing");
+
+const location = read("src/lib/location.ts");
+assert.match(location, /"03079"/, "location lookup must include the observed ZIP test case");
+assert.doesNotMatch(location, /staticGeocodingEnabled/, "known ZIP lookup must not require the old static geocoding flag");
 
 console.log("Focused regression tests passed.");

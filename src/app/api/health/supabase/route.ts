@@ -44,6 +44,9 @@ export async function GET() {
       { error: privateColumnError },
       { error: preferenceColumnError },
       { error: requestColumnError },
+      { error: coachLocationColumnError },
+      { error: availabilityError },
+      { error: availabilityColumnError },
     ] = await Promise.all([
       supabase.from("coaches").select("id", { count: "exact", head: true }),
       supabase.from("notifications").select("id", { count: "exact", head: true }),
@@ -62,7 +65,7 @@ export async function GET() {
       supabase
         .from("account_private_details")
         .select(
-          "user_id, phone_e164, phone_verified_at, account_type, updated_at, otp_send_count, otp_verify_attempt_count, otp_last_sent_at, otp_window_started_at",
+          "user_id, phone_e164, phone_verified_at, player_date_of_birth, account_type, updated_at, otp_send_count, otp_verify_attempt_count, otp_last_sent_at, otp_window_started_at",
           { count: "exact", head: true },
         ),
       supabase
@@ -74,12 +77,24 @@ export async function GET() {
       supabase
         .from("training_requests")
         .select(
-          "id, requester_user_id, coach_id, client_request_id, service_id, service_title, service_description, name, player_age, current_level, preferred_days_times",
+          "id, requester_user_id, coach_id, client_request_id, service_id, service_title, service_description, selected_availability_block_id, requested_date, requested_start_time, requested_end_time, timezone, player_age_at_request, name, player_age, current_level, preferred_days_times, status, updated_at",
           { count: "exact", head: true },
         ),
+      supabase
+        .from("coaches")
+        .select("id, city, state, zip_code, latitude, longitude, timezone", { count: "exact", head: true }),
+      supabase.from("coach_availability_blocks").select("id", { count: "exact", head: true }),
+      supabase
+        .from("coach_availability_blocks")
+        .select("id, coach_id, coach_user_id, availability_date, start_time, end_time, timezone, note, updated_at", {
+          count: "exact",
+          head: true,
+        }),
     ]);
     const accountColumnsReady = !profileColumnError && !privateColumnError && !preferenceColumnError;
     const requestSchemaReady = !idempotencyError && !requestColumnError;
+    const availabilitySchemaReady = !availabilityError && !availabilityColumnError;
+    const coachLocationSchemaReady = !coachLocationColumnError;
     const authSchemaReady =
       !profileError && !credentialError && !preferenceError && !privateAccountError && requestSchemaReady && accountColumnsReady;
 
@@ -87,7 +102,13 @@ export async function GET() {
       ...basePayload,
       configured: true,
       reachable: !schemaError,
-      schemaReady: !schemaError && !notificationError && !participantError && authSchemaReady,
+      schemaReady:
+        !schemaError &&
+        !notificationError &&
+        !participantError &&
+        authSchemaReady &&
+        availabilitySchemaReady &&
+        coachLocationSchemaReady,
       authSchemaReady,
       realtimeReady: !notificationError && !participantError,
       checks: {
@@ -98,6 +119,9 @@ export async function GET() {
         playerProfileRequiredColumns: !preferenceColumnError,
         trainingRequestRequiredColumns: !requestColumnError,
         trainingRequestIdempotencyColumn: !idempotencyError,
+        coachLocationRequiredColumns: !coachLocationColumnError,
+        coachAvailabilityTable: !availabilityError,
+        coachAvailabilityRequiredColumns: !availabilityColumnError,
       },
     });
   } catch {

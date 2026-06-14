@@ -64,9 +64,11 @@ Run these files in order:
 6. `supabase/migrations/20260613000500_access_saved_reviews_location_cleanup.sql`
 7. `supabase/migrations/20260613000600_registration_profile_private_details.sql`
 8. `supabase/migrations/20260613000700_player_profile_request_services.sql`
-9. `supabase/seed.sql`
-10. `supabase/bootstrap.sql`
-11. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
+9. `supabase/migrations/20260613000800_coach_availability_blocks.sql`
+10. `supabase/migrations/20260613000900_dob_request_schedule_location.sql`
+11. `supabase/seed.sql`
+12. `supabase/bootstrap.sql`
+13. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
 
 For an existing project that already ran the current schema, run only:
 
@@ -75,6 +77,7 @@ For an existing project that already ran the current schema, run only:
 3. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
 
 The migration is idempotent and does not delete existing conversations, messages, coaches, applications, subscriptions, player records, or access grants.
+The coach availability migration adds coach-owned calendar blocks used by `/coach/calendar` and the coach onboarding checklist.
 
 ## 4. Create the First Users
 
@@ -121,7 +124,6 @@ NEXT_PUBLIC_APP_URL=http://127.0.0.1:3002
 FOUNDING_COACH_LIMIT=5
 FOUNDING_COACH_PLAN_CODE=founding_5
 PREMIUM_COACH_PLAN_CODE=premium_15
-REPPY_ENABLE_STATIC_GEOCODING=false
 REPPY_DISABLE_PHONE_VERIFICATION=true
 CRON_SECRET=
 
@@ -138,3 +140,9 @@ ALERT_EMAIL_FROM=Reppy <notifications@yourdomain.com>
 player/parent accounts request training without a verified phone while leaving
 the phone verification code, pages, and schema intact. Remove the variable or set
 it to `false` when phone verification should be enforced again.
+
+Player date of birth is stored privately in `account_private_details`; requests
+store `player_age_at_request` so historical requests keep the age from the day
+the request was created. Coach city/state/ZIP, coordinates, timezone,
+availability blocks, and requested training dates are added by the latest
+migrations.

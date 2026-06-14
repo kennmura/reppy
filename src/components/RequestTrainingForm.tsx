@@ -3,6 +3,7 @@
 import { type HTMLAttributes, useEffect, useState } from "react";
 import type { AccountRequestProfile } from "@/lib/accountProfile";
 import type { CoachService } from "@/lib/types";
+import type { SelectedAvailabilityPayload } from "./CoachAvailabilityPanel";
 
 type SubmissionState = "idle" | "submitting" | "success" | "error";
 
@@ -34,6 +35,9 @@ const requestErrorMessages: Record<string, string> = {
   DUPLICATE_ACTIVE_REQUEST:
     "You already have an active request with this coach. Open your Message Center to continue the conversation.",
   RATE_LIMITED: "You are sending requests too quickly. Please wait and try again.",
+  REQUEST_LOOKUP_FAILED: "We could not verify this request. Please try again.",
+  CONVERSATION_CREATE_FAILED: "We could not start the coach conversation. Please try again.",
+  REQUEST_CREATE_FAILED: "We could not send this training request. Please try again.",
   SERVER_ERROR: "Training requests are temporarily unavailable. Please try again.",
 };
 
@@ -61,8 +65,11 @@ export function RequestTrainingForm({
   const [conversationId, setConversationId] = useState("");
   const [clientRequestId, setClientRequestId] = useState(() => crypto.randomUUID());
   const [selectedService, setSelectedService] = useState<SelectedService | null>(null);
+  const [selectedAvailability, setSelectedAvailability] = useState<SelectedAvailabilityPayload | null>(null);
+  const guardianRequired = accountProfile.playerAgeAtRequest === null || accountProfile.playerAgeAtRequest < 18;
 
   useServiceSelection((service) => setSelectedService(service));
+  useAvailabilitySelection((availability) => setSelectedAvailability(availability));
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -131,12 +138,17 @@ export function RequestTrainingForm({
       <input type="hidden" name="service_id" value={selectedService?.id ?? ""} />
       <input type="hidden" name="service_title" value={selectedService?.title ?? ""} />
       <input type="hidden" name="service_description" value={selectedService?.description ?? ""} />
+      <input type="hidden" name="selected_availability_block_id" value={selectedAvailability?.blockId ?? ""} />
+      <input type="hidden" name="requested_date" value={selectedAvailability?.date ?? ""} />
+      <input type="hidden" name="requested_start_time" value={selectedAvailability?.startTime ?? ""} />
+      <input type="hidden" name="requested_end_time" value={selectedAvailability?.endTime ?? ""} />
+      <input type="hidden" name="timezone" value={selectedAvailability?.timezone ?? "America/New_York"} />
       <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Player profile</p>
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
           <SummaryItem label="Player" value={accountProfile.playerName} />
           <SummaryItem label="Parent/guardian" value={accountProfile.guardianName || "Not needed"} />
-          <SummaryItem label="Age" value={accountProfile.playerAge} />
+          <SummaryItem label="Player age" value={accountProfile.playerAge} />
           <SummaryItem label="Club/team" value={accountProfile.currentTeam} />
         </dl>
       </div>
@@ -151,6 +163,23 @@ export function RequestTrainingForm({
           </p>
         ) : null}
       </div>
+      {selectedAvailability ? (
+        <div className="rounded-md border border-[#d7e5dc] bg-[#f3f8f5] p-4">
+          <p className="text-sm font-semibold text-slate-950">
+            {selectedAvailability.startTime ? "Requested time" : "Requested date"}
+          </p>
+          <p className="mt-1 text-sm leading-6 text-slate-700">
+            {formatSelectedAvailability(selectedAvailability)}
+          </p>
+          <button
+            type="button"
+            onClick={() => setSelectedAvailability(null)}
+            className="mt-2 text-xs font-semibold text-[#12355b]"
+          >
+            Clear selected time
+          </button>
+        </div>
+      ) : null}
       <Field
         label="Training goals"
         name="training_goals"
@@ -175,7 +204,7 @@ export function RequestTrainingForm({
       />
       <Field label="Message" name="message" autoComplete="off" textarea />
       <label className="flex gap-3 rounded-md border border-[#d7e5dc] bg-[#f3f8f5] px-4 py-3 text-sm leading-6 text-slate-700">
-        <input name="guardian_confirmed" type="checkbox" required className="mt-1 h-4 w-4" />
+        <input name="guardian_confirmed" type="checkbox" required={guardianRequired} className="mt-1 h-4 w-4" />
         <span>
           For athletes under 18, a parent or guardian must be involved in all training communication
           and scheduling.
@@ -245,6 +274,43 @@ function useServiceSelection(onSelect: (service: SelectedService) => void) {
     window.addEventListener("reppy:service-selected", onServiceSelected);
     return () => window.removeEventListener("reppy:service-selected", onServiceSelected);
   }, [onSelect]);
+}
+
+function useAvailabilitySelection(onSelect: (availability: SelectedAvailabilityPayload) => void) {
+  useEffect(() => {
+    function onAvailabilitySelected(event: Event) {
+      const detail = (event as CustomEvent<SelectedAvailabilityPayload>).detail;
+      if (detail?.date) {
+        onSelect(detail);
+      }
+    }
+
+    window.addEventListener("reppy:availability-selected", onAvailabilitySelected);
+    return () => window.removeEventListener("reppy:availability-selected", onAvailabilitySelected);
+  }, [onSelect]);
+}
+
+function formatSelectedAvailability(selection: SelectedAvailabilityPayload) {
+  const [year, month, day] = selection.date.split("-").map(Number);
+  const dateLabel = new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  if (!selection.startTime) {
+    return `${dateLabel}. Add preferred times below.`;
+  }
+
+  return `${dateLabel}, ${formatTime(selection.startTime)} to ${formatTime(selection.endTime)} ${selection.timezone}`;
+}
+
+function formatTime(value: string) {
+  const [hourText, minuteText] = value.split(":");
+  return new Date(2026, 0, 1, Number(hourText), Number(minuteText)).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function SummaryItem({ label, value }: { label: string; value: string }) {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AccountShell } from "@/components/account/AccountShell";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { accountRequestProfileFrom, isAccountRequestProfileComplete } from "@/lib/accountProfile";
-import { getAccountContextOrRedirect } from "@/lib/auth";
+import { getAccountContextOrRedirect, getAccountPrivateDetails } from "@/lib/auth";
 import { getAccountConversations, getSavedCoachesForUser, getUserCoachingPreference } from "@/lib/data";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 
@@ -10,17 +10,18 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountDashboardPage() {
   const { user, profile } = await getAccountContextOrRedirect();
-  const [notificationCount, conversations, preference] = await Promise.all([
+  const [notificationCount, conversations, preference, privateDetails] = await Promise.all([
     getUnreadNotificationCount(user.id),
     getAccountConversations(user.id),
     getUserCoachingPreference(user.id),
+    getAccountPrivateDetails(user.id),
   ]);
   const savedCoaches = await getSavedCoachesForUser(user.id);
   const unreadMessages = conversations.reduce(
     (total, conversation) => total + Number(conversation.participant_unread_count ?? 0),
     0,
   );
-  const requestProfile = accountRequestProfileFrom({ profile, preference });
+  const requestProfile = accountRequestProfileFrom({ profile, preference, privateDetails });
   const profileComplete = isAccountRequestProfileComplete(requestProfile);
 
   return (
@@ -57,7 +58,7 @@ export default async function AccountDashboardPage() {
           <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950">
             <h2 className="text-lg font-semibold">Complete your player profile</h2>
             <p className="mt-2 text-sm leading-6">
-              Add player name, parent/guardian name, player age, and current club/team once so
+              Add player name, parent/guardian name, player date of birth, and current club/team once so
               Reppy can use it automatically for training requests.
             </p>
             <Link

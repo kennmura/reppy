@@ -28,6 +28,7 @@ export type Coach = {
   longitude?: number | null;
   distance_miles?: number | null;
   service_radius_miles?: number | null;
+  timezone?: string | null;
   service_area: string | null;
   pricing_text: string | null;
   profile_photo_url: string | null;
@@ -119,6 +120,7 @@ export type AccountPrivateDetails = {
   user_id: string;
   phone_e164: string | null;
   phone_verified_at: string | null;
+  player_date_of_birth?: string | null;
   account_type: "parent" | "adult_player" | null;
   otp_send_count: number;
   otp_verify_attempt_count: number;
@@ -158,6 +160,19 @@ export type CoachTestimonial = {
   created_at: string;
 };
 
+export type CoachAvailabilityBlock = {
+  id: string;
+  coach_id: string;
+  coach_user_id: string | null;
+  availability_date: string;
+  start_time: string;
+  end_time: string;
+  timezone: string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TrainingRequest = {
   id: string;
   coach_id: string | null;
@@ -169,19 +184,26 @@ export type TrainingRequest = {
   email: string;
   phone: string | null;
   player_age: string | null;
+  player_age_at_request?: number | null;
   current_level: string | null;
   training_goals: string;
   preferred_location: string | null;
   preferred_days_times: string | null;
   message: string | null;
-  status: "new" | "contacted" | "scheduled" | "closed";
+  status: "pending" | "accepted" | "declined" | "cancelled" | "completed" | "new" | "contacted" | "scheduled" | "closed";
   conversation_id?: string | null;
+  selected_availability_block_id?: string | null;
+  requested_date?: string | null;
+  requested_start_time?: string | null;
+  requested_end_time?: string | null;
+  timezone?: string | null;
   is_minor?: boolean | null;
   guardian_name?: string | null;
   guardian_required?: boolean | null;
   guardian_confirmed_at?: string | null;
   parent_follow_up_sent_at?: string | null;
   created_at: string;
+  updated_at?: string | null;
 };
 
 export type CoachApplication = {
@@ -296,9 +318,16 @@ export type ConversationPrivateDetails = {
   service_id?: string | null;
   service_title?: string | null;
   service_description?: string | null;
+  selected_availability_block_id?: string | null;
+  requested_date?: string | null;
+  requested_start_time?: string | null;
+  requested_end_time?: string | null;
+  timezone?: string | null;
+  player_age_at_request?: number | null;
   exact_location?: string | null;
   preferred_days_times: string | null;
   current_level: string | null;
+  current_team?: string | null;
 };
 
 export type Message = {
@@ -382,6 +411,7 @@ export type CoachProfileData = {
   audiences: CoachAudience[];
   testimonials: CoachTestimonial[];
   credentials?: CoachCredential[];
+  availabilityBlocks?: CoachAvailabilityBlock[];
 };
 
 export type UserCoachingPreference = {
