@@ -16,6 +16,7 @@ create table if not exists coaches (
   zip_code text,
   latitude double precision,
   longitude double precision,
+  timezone text default 'America/New_York',
   service_area text,
   pricing_text text default 'Pricing available upon request.',
   profile_photo_url text,
@@ -58,6 +59,20 @@ create table if not exists coach_testimonials (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists coach_availability_blocks (
+  id uuid primary key default gen_random_uuid(),
+  coach_id uuid not null references coaches(id) on delete cascade,
+  coach_user_id uuid references auth.users(id) on delete cascade,
+  availability_date date not null,
+  start_time time not null,
+  end_time time not null,
+  timezone text not null default 'America/New_York',
+  note text,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint coach_availability_blocks_time_check check (end_time > start_time)
+);
+
 create table if not exists coach_media (
   id uuid primary key default gen_random_uuid(),
   coach_id uuid references coaches(id) on delete cascade,
@@ -76,6 +91,7 @@ create table if not exists training_requests (
   email text not null,
   phone text,
   player_age text,
+  player_age_at_request integer,
   current_level text,
   training_goals text not null,
   preferred_location text,
@@ -83,6 +99,11 @@ create table if not exists training_requests (
   message text,
   status text default 'new',
   client_request_id uuid,
+  selected_availability_block_id uuid references coach_availability_blocks(id) on delete set null,
+  requested_date date,
+  requested_start_time time,
+  requested_end_time time,
+  timezone text default 'America/New_York',
   created_at timestamp with time zone default now()
 );
 
@@ -108,6 +129,7 @@ alter table coaches enable row level security;
 alter table coach_services enable row level security;
 alter table coach_audiences enable row level security;
 alter table coach_testimonials enable row level security;
+alter table coach_availability_blocks enable row level security;
 alter table coach_media enable row level security;
 alter table training_requests enable row level security;
 alter table coach_applications enable row level security;
@@ -132,12 +154,31 @@ create policy "Published coach testimonials are public"
 on coach_testimonials for select
 using (exists (select 1 from coaches where coaches.id = coach_testimonials.coach_id and coaches.is_published = true));
 
+drop policy if exists "Published coach availability is public" on coach_availability_blocks;
+create policy "Published coach availability is public"
+on coach_availability_blocks for select
+using (exists (select 1 from coaches where coaches.id = coach_availability_blocks.coach_id and coaches.is_published = true));
+
+drop policy if exists "Coaches manage own availability" on coach_availability_blocks;
+create policy "Coaches manage own availability"
+on coach_availability_blocks for all
+using (
+  auth.uid() = coach_user_id
+  or exists (select 1 from coaches where coaches.id = coach_availability_blocks.coach_id and coaches.user_id = auth.uid())
+)
+with check (
+  auth.uid() = coach_user_id
+  or exists (select 1 from coaches where coaches.id = coach_availability_blocks.coach_id and coaches.user_id = auth.uid())
+);
+
 drop policy if exists "Published coach media is public" on coach_media;
 create policy "Published coach media is public"
 on coach_media for select
 using (exists (select 1 from coaches where coaches.id = coach_media.coach_id and coaches.is_published = true));
 
 create index if not exists coaches_slug_idx on coaches(slug);
+create index if not exists coach_availability_blocks_coach_date_idx on coach_availability_blocks(coach_id, availability_date, start_time);
+create index if not exists coach_availability_blocks_user_date_idx on coach_availability_blocks(coach_user_id, availability_date);
 create index if not exists training_requests_status_idx on training_requests(status);
 create index if not exists training_requests_created_at_idx on training_requests(created_at desc);
 create index if not exists training_requests_requester_created_idx on training_requests(requester_user_id, created_at desc);
@@ -161,6 +202,7 @@ alter table coaches add column if not exists state text;
 alter table coaches add column if not exists zip_code text;
 alter table coaches add column if not exists latitude double precision;
 alter table coaches add column if not exists longitude double precision;
+alter table coaches add column if not exists timezone text default 'America/New_York';
 
 alter table training_requests add column if not exists conversation_id uuid;
 alter table training_requests add column if not exists requester_user_id uuid references auth.users(id) on delete set null;
@@ -174,6 +216,13 @@ alter table training_requests add column if not exists client_request_id uuid;
 alter table training_requests add column if not exists service_id uuid references coach_services(id) on delete set null;
 alter table training_requests add column if not exists service_title text;
 alter table training_requests add column if not exists service_description text;
+alter table training_requests add column if not exists player_age_at_request integer;
+alter table training_requests add column if not exists selected_availability_block_id uuid references coach_availability_blocks(id) on delete set null;
+alter table training_requests add column if not exists requested_date date;
+alter table training_requests add column if not exists requested_start_time time;
+alter table training_requests add column if not exists requested_end_time time;
+alter table training_requests add column if not exists timezone text default 'America/New_York';
+alter table training_requests add column if not exists updated_at timestamp with time zone default now();
 
 create table if not exists user_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
