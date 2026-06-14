@@ -45,6 +45,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <Link href="/admin/subscriptions" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
             Subscriptions
           </Link>
+          <Link href="/admin/coach-promo" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
+            Coach Promo
+          </Link>
           <Link href="/admin/referrals" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
             Referrals
           </Link>

@@ -50,6 +50,9 @@ REPPY_DISABLE_PHONE_VERIFICATION=true
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+STRIPE_COACH_PREMIUM_MONTHLY_PRICE_ID=
+STRIPE_COACH_PREMIUM_ANNUAL_PRICE_ID=
+STRIPE_COACH_FOUNDING_MONTHLY_PRICE_ID=
 REPPY_PLATFORM_FEE_BPS=500
 STRIPE_CONNECT_CLIENT_ID=
 ```
@@ -108,6 +111,26 @@ club/team, goals, and preferred times on every coach request.
 - `REPPY_PLATFORM_FEE_BPS=500` records a 5% platform fee for Reppy platform payments.
 - Future sessions can use direct coach payment or Reppy payment depending on coach preferences.
 - Configure Stripe webhook delivery for local or deployed testing and set `STRIPE_WEBHOOK_SECRET` in `.env.local`.
+
+## Coach Premium Billing
+
+- Public coach premium plans are `$15.99/month` and `$160.99/year`.
+- Admins can grant free premium access or private `$5.99/month` founding subscription eligibility in `/admin/coach-promo`.
+- The `$5.99/month` founding plan is never a public promo code and there is no user-entered promo-code box.
+- The billing page sends only safe plan codes: `premium_monthly`, `premium_annual`, or `founding_599`.
+- The server chooses the Stripe price ID after checking the authenticated coach email against `coach_access_offers`.
+- Free premium offers create internal `premium_access_grants` and do not require Stripe checkout.
+- Limited 3/6/12-month founding offers use Stripe subscription schedules from the hidden `$5.99/month` price to the public `$15.99/month` price.
+- Lifetime founding offers stay on the hidden `$5.99/month` recurring price while the subscription remains active.
+
+Manual Stripe setup:
+
+- Create a Premium monthly recurring price for `$15.99/month` and set `STRIPE_COACH_PREMIUM_MONTHLY_PRICE_ID`.
+- Create a Premium annual recurring price for `$160.99/year` and set `STRIPE_COACH_PREMIUM_ANNUAL_PRICE_ID`.
+- Create a hidden Founding monthly recurring price for `$5.99/month` and set `STRIPE_COACH_FOUNDING_MONTHLY_PRICE_ID`.
+- Do not create public promo codes, Stripe promotion codes, or coupons for the founding rate.
+- Configure Stripe webhook delivery to `/api/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, and `invoice.payment_failed`.
+- Configure the Stripe Customer Portal before exposing self-service cancellation or payment-method management links.
 
 ## Coach Discovery
 
@@ -186,9 +209,11 @@ Admin:
 - `/admin/reports`
 - `/admin/bans`
 - `/admin/subscriptions`
+- `/admin/coach-promo`
 - `/admin/referrals`
 
 `/admin/subscriptions` includes manual beta/premium access grants for coaches before automated billing is fully connected.
+`/admin/coach-promo` manages email-approved free premium and hidden founding-rate offers.
 
 API:
 

@@ -34,6 +34,7 @@ export default async function AdminPage() {
           <AdminLink href="/admin/coaches" title="Manage coaches" body="Edit profile fields and publish settings." />
           <AdminLink href="/admin/accounts" title="Player accounts" body="Read-only testing view for parent and adult player accounts." />
           <AdminLink href="/admin/coach-applications" title="Applications" body="Review coaches who asked to get on the directory radar." />
+          <AdminLink href="/admin/coach-promo" title="Coach Promo" body="Grant free premium access or private founding-rate offers by coach email." />
           <AdminLink href="/admin/reports" title="Reports" body="Review message and safety reports." />
         </div>
       </div>

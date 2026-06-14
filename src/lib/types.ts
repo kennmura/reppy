@@ -349,6 +349,70 @@ export type SubscriptionStatus =
   | "canceled"
   | "expired";
 
+export type CoachOfferType = "free_premium" | "founding_599";
+
+export type CoachOfferDurationType = "three_months" | "six_months" | "twelve_months" | "lifetime";
+
+export type CoachAccessOfferStatus = "unclaimed" | "claimed" | "active" | "expired" | "revoked" | "redeemed";
+
+export type CoachAccessOffer = {
+  id: string;
+  normalized_email: string;
+  user_id: string | null;
+  coach_id: string | null;
+  offer_type: CoachOfferType;
+  plan_code: "premium" | "founding_599";
+  duration_type: CoachOfferDurationType;
+  duration_months: number | null;
+  starts_at: string;
+  expires_at: string | null;
+  is_lifetime: boolean;
+  max_redemptions: number;
+  redeemed_count: number;
+  redeemed_at: string | null;
+  revoked_at: string | null;
+  invite_token: string | null;
+  source: "admin" | "csv_upload" | "invite_link" | "referral" | "ambassador";
+  stripe_price_id: string | null;
+  stripe_subscription_schedule_id: string | null;
+  stripe_subscription_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  updated_by?: string | null;
+  revoked_by?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CoachAccessOfferWithClaim = CoachAccessOffer & {
+  claimed_user_email?: string | null;
+  claimed_coach_name?: string | null;
+};
+
+export type Subscription = {
+  id: string;
+  coach_user_id: string | null;
+  coach_id?: string | null;
+  provider_customer_id: string | null;
+  provider_subscription_id: string | null;
+  plan_code: string;
+  status: SubscriptionStatus;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean | null;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  access_ends_at: string | null;
+  founding_price_locked: boolean | null;
+  coach_access_offer_id?: string | null;
+  stripe_price_id?: string | null;
+  stripe_subscription_schedule_id?: string | null;
+  stripe_checkout_session_id?: string | null;
+  last_invoice_status?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MessageAccess = {
   hasAccess: boolean;
   reason: "subscription" | "trial" | "grant" | "admin" | "none";
@@ -363,6 +427,7 @@ export type PremiumAccessGrant = {
   coach_user_id: string | null;
   coach_id?: string | null;
   user_id?: string | null;
+  coach_access_offer_id?: string | null;
   grant_type: string;
   starts_at: string;
   ends_at: string | null;
@@ -371,6 +436,7 @@ export type PremiumAccessGrant = {
   is_active?: boolean | null;
   notes?: string | null;
   created_at: string;
+  updated_at?: string | null;
 };
 
 export type SavedCoach = {

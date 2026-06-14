@@ -7,6 +7,7 @@ import {
   hasSupabaseConfig,
 } from "./supabase";
 import { isPhoneVerificationBypassed } from "./accountConfig";
+import { applyEligibleFreeCoachOfferForUser } from "./coachAccessOffers";
 import type { AccountPrivateDetails, Coach, UserProfile, UserRole } from "./types";
 
 const allRoles: UserRole[] = ["coach", "parent", "adult_player", "admin"];
@@ -301,6 +302,18 @@ export async function getCoachContextOrRedirect() {
       .is("coach_user_id", null);
     coach.user_id = user.id;
   }
+
+  await applyEligibleFreeCoachOfferForUser({
+    userId: user.id,
+    email: user.email,
+    coachId: coach.id,
+  }).catch((error) => {
+    console.error("[coach offers] automatic free offer application failed", {
+      userId: user.id,
+      coachId: coach.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   return {
     user,

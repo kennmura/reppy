@@ -78,6 +78,23 @@ export function hasStripeCheckoutConfig() {
   return Boolean(stripeSecretKey());
 }
 
+export type CoachSubscriptionPlanCode = "premium_monthly" | "premium_annual" | "founding_599";
+
+export function stripeCoachPriceIdForPlan(planCode: CoachSubscriptionPlanCode) {
+  switch (planCode) {
+    case "premium_monthly":
+      return process.env.STRIPE_COACH_PREMIUM_MONTHLY_PRICE_ID ?? "";
+    case "premium_annual":
+      return process.env.STRIPE_COACH_PREMIUM_ANNUAL_PRICE_ID ?? "";
+    case "founding_599":
+      return process.env.STRIPE_COACH_FOUNDING_MONTHLY_PRICE_ID ?? "";
+  }
+}
+
+export function hasStripeCoachSubscriptionConfig(planCode: CoachSubscriptionPlanCode) {
+  return Boolean(stripeSecretKey() && stripeCoachPriceIdForPlan(planCode));
+}
+
 export type CheckoutSessionInput = {
   paymentId: string;
   trainingRequestId: string | null;
@@ -97,6 +114,22 @@ export type CheckoutSessionResult = {
   id: string;
   url: string;
   paymentIntentId: string | null;
+};
+
+export type SubscriptionCheckoutSessionInput = {
+  coachUserId: string;
+  coachId: string;
+  coachName: string;
+  coachEmail: string | null;
+  planCode: CoachSubscriptionPlanCode;
+  offerId?: string | null;
+  offerDurationMonths?: number | null;
+  offerDurationType?: string | null;
+};
+
+export type SubscriptionCheckoutSessionResult = {
+  id: string;
+  url: string;
 };
 
 export async function createStripeCheckoutSession(input: CheckoutSessionInput): Promise<CheckoutSessionResult> {
@@ -159,6 +192,143 @@ export async function createStripeCheckoutSession(input: CheckoutSessionInput): 
     url: data.url,
     paymentIntentId: data.payment_intent ?? null,
   };
+}
+
+export async function createStripeSubscriptionCheckoutSession(
+  input: SubscriptionCheckoutSessionInput,
+): Promise<SubscriptionCheckoutSessionResult> {
+  const secretKey = stripeSecretKey();
+  const priceId = stripeCoachPriceIdForPlan(input.planCode);
+  if (!secretKey) {
+    throw new Error("Missing STRIPE_SECRET_KEY.");
+  }
+
+  if (!priceId) {
+    throw new Error(`Missing Stripe price ID for ${input.planCode}.`);
+  }
+
+  const params = new URLSearchParams();
+  params.set("mode", "subscription");
+  params.set("success_url", appUrl("/coach/billing?billing=checkout-success"));
+  params.set("cancel_url", appUrl("/coach/billing?billing=checkout-cancelled"));
+  params.set("client_reference_id", input.coachUserId);
+  if (input.coachEmail) {
+    params.set("customer_email", input.coachEmail);
+  }
+  params.set("line_items[0][quantity]", "1");
+  params.set("line_items[0][price]", priceId);
+  params.set("metadata[kind]", "coach_subscription");
+  params.set("metadata[coach_user_id]", input.coachUserId);
+  params.set("metadata[coach_id]", input.coachId);
+  params.set("metadata[plan_code]", input.planCode);
+  params.set("metadata[offer_id]", input.offerId ?? "");
+  params.set("metadata[offer_duration_months]", input.offerDurationMonths ? String(input.offerDurationMonths) : "");
+  params.set("metadata[offer_duration_type]", input.offerDurationType ?? "");
+  params.set("subscription_data[metadata][kind]", "coach_subscription");
+  params.set("subscription_data[metadata][coach_user_id]", input.coachUserId);
+  params.set("subscription_data[metadata][coach_id]", input.coachId);
+  params.set("subscription_data[metadata][plan_code]", input.planCode);
+  params.set("subscription_data[metadata][offer_id]", input.offerId ?? "");
+  params.set(
+    "subscription_data[metadata][offer_duration_months]",
+    input.offerDurationMonths ? String(input.offerDurationMonths) : "",
+  );
+  params.set("subscription_data[metadata][offer_duration_type]", input.offerDurationType ?? "");
+
+  const response = await stripePost("https://api.stripe.com/v1/checkout/sessions", params);
+  const data = response as {
+    id?: string;
+    url?: string;
+    error?: { message?: string };
+  };
+
+  if (!data.id || !data.url) {
+    throw new Error(data.error?.message ?? "Stripe subscription checkout did not return a URL.");
+  }
+
+  return {
+    id: data.id,
+    url: data.url,
+  };
+}
+
+export async function getStripeSubscription(subscriptionId: string) {
+  const secretKey = stripeSecretKey();
+  if (!secretKey) {
+    throw new Error("Missing STRIPE_SECRET_KEY.");
+  }
+
+  const response = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+    },
+  });
+
+  const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!response.ok || !data?.id) {
+    const error = data?.error as { message?: string } | undefined;
+    throw new Error(error?.message ?? `Stripe subscription lookup failed with status ${response.status}.`);
+  }
+
+  return data;
+}
+
+export async function createFoundingSubscriptionSchedule({
+  subscriptionId,
+  durationMonths,
+}: {
+  subscriptionId: string;
+  durationMonths: number;
+}) {
+  const foundingPriceId = stripeCoachPriceIdForPlan("founding_599");
+  const premiumMonthlyPriceId = stripeCoachPriceIdForPlan("premium_monthly");
+
+  if (!foundingPriceId || !premiumMonthlyPriceId) {
+    throw new Error("Missing founding or premium monthly Stripe price ID.");
+  }
+
+  const createParams = new URLSearchParams();
+  createParams.set("from_subscription", subscriptionId);
+  const schedule = (await stripePost("https://api.stripe.com/v1/subscription_schedules", createParams)) as {
+    id?: string;
+    phases?: Array<{ start_date?: number }>;
+  };
+
+  if (!schedule.id) {
+    throw new Error("Stripe subscription schedule was not created.");
+  }
+
+  const updateParams = new URLSearchParams();
+  updateParams.set("end_behavior", "release");
+  updateParams.set("phases[0][items][0][price]", foundingPriceId);
+  updateParams.set("phases[0][items][0][quantity]", "1");
+  updateParams.set("phases[0][iterations]", String(durationMonths));
+  updateParams.set("phases[1][items][0][price]", premiumMonthlyPriceId);
+  updateParams.set("phases[1][items][0][quantity]", "1");
+  updateParams.set("phases[1][metadata][reppy_price_switch]", "founding_to_premium");
+
+  await stripePost(`https://api.stripe.com/v1/subscription_schedules/${encodeURIComponent(schedule.id)}`, updateParams);
+  return schedule.id;
+}
+
+async function stripePost(url: string, params: URLSearchParams) {
+  const secretKey = stripeSecretKey();
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: params,
+  });
+
+  const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!response.ok) {
+    const error = data?.error as { message?: string } | undefined;
+    throw new Error(error?.message ?? `Stripe request failed with status ${response.status}.`);
+  }
+
+  return data ?? {};
 }
 
 export function verifyStripeWebhookPayload({
