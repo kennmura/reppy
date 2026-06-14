@@ -46,6 +46,7 @@ ALERT_EMAIL_FROM=Reppy <notifications@yourdomain.com>
 FOUNDING_COACH_PLAN_CODE=founding_5
 PREMIUM_COACH_PLAN_CODE=premium_15
 REPPY_ENABLE_STATIC_GEOCODING=false
+REPPY_DISABLE_PHONE_VERIFICATION=true
 ```
 
 4. Follow `SUPABASE_SETUP.md`.
@@ -69,6 +70,16 @@ Player/parent registration requires public Supabase config plus a server-only
 service role or secret key. Do not expose `SUPABASE_SECRET_KEY` or
 `SUPABASE_SERVICE_ROLE_KEY` to client-side code.
 
+For local testing and the current MVP flow, `REPPY_DISABLE_PHONE_VERIFICATION=true`
+temporarily bypasses phone verification while keeping the verification pages,
+actions, and database fields in place. Remove it or set it to `false` when
+verified phone numbers should be required again.
+
+Player/parent profiles store player name separately from parent/guardian name.
+The player name becomes `user_profiles.display_name`; private request details
+come from `user_coaching_preferences` so users do not retype player age or
+club/team on every coach request.
+
 ## Messaging Model
 
 - Training requests and replies stay inside Reppy.
@@ -87,6 +98,7 @@ service role or secret key. Do not expose `SUPABASE_SECRET_KEY` or
 - Location search uses saved coach latitude/longitude only when a geocoding provider has resolved the search location.
 - `src/lib/location.ts` currently exposes a clean geocoding placeholder. Leave `REPPY_ENABLE_STATIC_GEOCODING=false` for production so the app does not show fake distances.
 - Player/parent users can save coaches from profile pages and see saved coaches in `/account/dashboard`.
+- Coach profile service cards are selectable. A selected service is included in the training request payload and saved when the request-service migration has been applied.
 
 ## Routes
 
@@ -149,6 +161,8 @@ Shared auth:
 Admin:
 
 - `/admin`
+- `/admin/accounts`
+- `/admin/accounts/[userId]`
 - `/admin/coaches`
 - `/admin/conversations`
 - `/admin/reports`

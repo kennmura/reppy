@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { resendAccountConfirmation } from "@/lib/authActions";
 import { getAuthenticatedUserOrRedirect } from "@/lib/auth";
+import { isPhoneVerificationBypassed } from "@/lib/accountConfig";
 
 const errors: Record<string, string> = {
   "missing-email": "This account does not have an email address.",
@@ -15,7 +16,8 @@ export default async function AccountVerifyEmailPage({
 }) {
   const params = await searchParams;
   const user = await getAuthenticatedUserOrRedirect("/account/login");
-  const next = params.next && params.next.startsWith("/") && !params.next.startsWith("//") ? params.next : "/account/verify-phone";
+  const defaultNext = isPhoneVerificationBypassed() ? "/account/dashboard" : "/account/verify-phone";
+  const next = params.next && params.next.startsWith("/") && !params.next.startsWith("//") ? params.next : defaultNext;
 
   return (
     <main className="bg-[#f7f8f3] py-14">

@@ -1,14 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { ensureApplicationProfile, getApplicationProfile } from "@/lib/auth";
-import {
-  createSupabaseAdminClient,
-  createSupabaseServerClient,
-  hasSupabaseAdminConfig,
-  hasSupabaseConfig,
-} from "@/lib/supabase";
-import type { UserProfile, UserRole } from "@/lib/types";
-
-const roles: UserRole[] = ["coach", "parent", "adult_player", "admin"];
+import { repairAccountForAuthUser } from "@/lib/auth";
+import { isPhoneVerificationBypassed } from "@/lib/accountConfig";
+import { createSupabaseServerClient, hasSupabaseAdminConfig, hasSupabaseConfig } from "@/lib/supabase";
+import type { UserProfile } from "@/lib/types";
 
 function safeNext(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("://")) {
@@ -16,6 +10,31 @@ function safeNext(value: string | null) {
   }
 
   return value;
+}
+
+function serializableSupabaseError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return { message: String(error) };
+  }
+
+  const record = error as Record<string, unknown>;
+  return {
+    name: typeof record.name === "string" ? record.name : undefined,
+    message: typeof record.message === "string" ? record.message : undefined,
+    status: typeof record.status === "number" || typeof record.status === "string" ? record.status : undefined,
+    code: typeof record.code === "string" ? record.code : undefined,
+    details: typeof record.details === "string" ? record.details : undefined,
+    hint: typeof record.hint === "string" ? record.hint : undefined,
+  };
+}
+
+function unwrapPhoneVerificationNext(next: string | null, origin: string) {
+  if (!next || !isPhoneVerificationBypassed() || !next.startsWith("/account/verify-phone")) {
+    return next;
+  }
+
+  const nestedNext = safeNext(new URL(next, origin).searchParams.get("next"));
+  return nestedNext ?? "/account/dashboard";
 }
 
 export async function GET(request: NextRequest) {
@@ -44,30 +63,25 @@ export async function GET(request: NextRequest) {
 
   let profile: UserProfile | null = null;
 
-  if (hasSupabaseAdminConfig()) {
-    profile = await getApplicationProfile(user.id);
-
-    if (!profile) {
-      const metadataRole = user.user_metadata?.role;
-      const role = roles.includes(metadataRole) ? metadataRole : "parent";
-      profile = await ensureApplicationProfile({
-        userId: user.id,
-        role,
-        displayName: user.user_metadata?.full_name ?? user.email ?? "Reppy user",
-        emailVerifiedAt: user.email_confirmed_at ?? null,
-      });
-    } else if (user.email_confirmed_at && !profile.email_verified_at) {
-      const admin = createSupabaseAdminClient();
-      await admin
-        .from("user_profiles")
-        .update({ email_verified_at: user.email_confirmed_at, updated_at: new Date().toISOString() })
-        .eq("id", user.id);
-      profile = { ...profile, email_verified_at: user.email_confirmed_at };
-    }
+  if (!hasSupabaseAdminConfig()) {
+    return NextResponse.redirect(new URL(`${fallbackLogin}?error=missing-admin-supabase`, requestUrl.origin));
   }
 
-  if (next) {
-    return NextResponse.redirect(new URL(next, requestUrl.origin));
+  try {
+    const repaired = await repairAccountForAuthUser(user);
+    profile = repaired.profile;
+  } catch (error) {
+    console.error("[authCallback] Failed to repair application account after Supabase callback", {
+      userId: user.id,
+      error: serializableSupabaseError(error),
+    });
+    return NextResponse.redirect(new URL(`${fallbackLogin}?error=profile-create-failed`, requestUrl.origin));
+  }
+
+  const resolvedNext = unwrapPhoneVerificationNext(next, requestUrl.origin);
+
+  if (resolvedNext) {
+    return NextResponse.redirect(new URL(resolvedNext, requestUrl.origin));
   }
 
   if (profile?.role === "coach") {

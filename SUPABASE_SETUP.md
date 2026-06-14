@@ -48,6 +48,10 @@ Supabase Auth should handle account confirmation, password recovery, and auth li
 
 See `AUTH_SETUP.md` for the current coach and parent/player auth route map.
 
+For local testing, the app defaults to `NEXT_PUBLIC_APP_URL=http://127.0.0.1:3002`.
+Keep the Supabase Site URL aligned with the app URL, and make sure both local
+callback URLs above are allowed.
+
 ## 3. Run SQL
 
 Run these files in order:
@@ -59,9 +63,10 @@ Run these files in order:
 5. `supabase/migrations/20260613000400_request_verification_realtime.sql`
 6. `supabase/migrations/20260613000500_access_saved_reviews_location_cleanup.sql`
 7. `supabase/migrations/20260613000600_registration_profile_private_details.sql`
-8. `supabase/seed.sql`
-9. `supabase/bootstrap.sql`
-10. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
+8. `supabase/migrations/20260613000700_player_profile_request_services.sql`
+9. `supabase/seed.sql`
+10. `supabase/bootstrap.sql`
+11. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
 
 For an existing project that already ran the current schema, run only:
 
@@ -117,6 +122,7 @@ FOUNDING_COACH_LIMIT=5
 FOUNDING_COACH_PLAN_CODE=founding_5
 PREMIUM_COACH_PLAN_CODE=premium_15
 REPPY_ENABLE_STATIC_GEOCODING=false
+REPPY_DISABLE_PHONE_VERIFICATION=true
 CRON_SECRET=
 
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=
@@ -127,3 +133,8 @@ FREE_COACH_ALERT_EMAILS_ENABLED=false
 RESEND_API_KEY=
 ALERT_EMAIL_FROM=Reppy <notifications@yourdomain.com>
 ```
+
+`REPPY_DISABLE_PHONE_VERIFICATION=true` is a temporary local/MVP bypass. It lets
+player/parent accounts request training without a verified phone while leaving
+the phone verification code, pages, and schema intact. Remove the variable or set
+it to `false` when phone verification should be enforced again.

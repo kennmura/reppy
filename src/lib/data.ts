@@ -11,6 +11,10 @@ import {
 import { sportMatches } from "./sports";
 import { createSupabaseAdminClient, hasSupabaseAdminConfig, hasSupabaseConfig } from "./supabase";
 import type {
+  AccountPrivateDetails,
+  AdminAccountDetail,
+  AdminAccountSummary,
+  AdminAuthUserSummary,
   Coach,
   CoachApplication,
   CoachAudience,
@@ -26,11 +30,14 @@ import type {
   SavedCoach,
   TrainingRequest,
   UserCoachingPreference,
+  UserProfile,
 } from "./types";
 
 function sortByOrder<T extends { sort_order: number }>(items: T[]) {
   return [...items].sort((a, b) => a.sort_order - b.sort_order);
 }
+
+const playerAccountRoles = ["parent", "adult_player"] as const;
 
 const publicCoachBaseFields = [
   "id",
@@ -407,6 +414,129 @@ export async function getAdminPremiumAccessGrants(): Promise<PremiumAccessGrant[
   return (data ?? []) as PremiumAccessGrant[];
 }
 
+function compactAuthUser(user: unknown): AdminAuthUserSummary | null {
+  if (!user || typeof user !== "object") {
+    return null;
+  }
+
+  const record = user as Record<string, unknown>;
+  const stringValue = (key: string) => (typeof record[key] === "string" ? record[key] : null);
+
+  return {
+    id: stringValue("id") ?? "",
+    email: stringValue("email"),
+    phone: stringValue("phone"),
+    created_at: stringValue("created_at"),
+    last_sign_in_at: stringValue("last_sign_in_at"),
+    email_confirmed_at: stringValue("email_confirmed_at"),
+    phone_confirmed_at: stringValue("phone_confirmed_at"),
+  };
+}
+
+async function getAuthUsersById(userIds: string[]) {
+  const supabase = createSupabaseAdminClient();
+  const targetIds = new Set(userIds);
+  const usersById = new Map<string, AdminAuthUserSummary>();
+
+  if (!targetIds.size) {
+    return usersById;
+  }
+
+  const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (error) {
+    return usersById;
+  }
+
+  for (const user of data.users) {
+    if (targetIds.has(user.id)) {
+      const compact = compactAuthUser(user);
+      if (compact) {
+        usersById.set(user.id, compact);
+      }
+    }
+  }
+
+  return usersById;
+}
+
+async function getAuthUserById(userId: string) {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase.auth.admin.getUserById(userId);
+
+  if (error) {
+    return null;
+  }
+
+  return compactAuthUser(data.user);
+}
+
+export async function getAdminPlayerAccounts(): Promise<AdminAccountSummary[]> {
+  noStore();
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("*")
+    .in("role", [...playerAccountRoles])
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const profiles = (data ?? []) as UserProfile[];
+  const authUsersById = await getAuthUsersById(profiles.map((profile) => profile.id));
+
+  return profiles.map((profile) => ({
+    ...profile,
+    auth_user: authUsersById.get(profile.id) ?? null,
+  }));
+}
+
+export async function getAdminPlayerAccountById(userId: string): Promise<AdminAccountDetail | null> {
+  noStore();
+  const supabase = createSupabaseAdminClient();
+  const { data: profile, error } = await supabase
+    .from("user_profiles")
+    .select("*")
+    .eq("id", userId)
+    .in("role", [...playerAccountRoles])
+    .maybeSingle<UserProfile>();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!profile) {
+    return null;
+  }
+
+  const [{ data: privateDetails }, { data: preference }, conversations, savedCoaches, authUser] =
+    await Promise.all([
+      supabase
+        .from("account_private_details")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle<AccountPrivateDetails>(),
+      supabase
+        .from("user_coaching_preferences")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle<UserCoachingPreference>(),
+      getAccountConversations(userId),
+      getSavedCoachesForUser(userId),
+      getAuthUserById(userId),
+    ]);
+
+  return {
+    profile,
+    privateDetails: privateDetails ?? null,
+    preference: preference ?? null,
+    conversations,
+    savedCoaches,
+    authUser,
+  };
+}
+
 export async function getAdminTrainingRequests(): Promise<TrainingRequest[]> {
   noStore();
   const supabase = createSupabaseAdminClient();
@@ -690,11 +820,13 @@ export async function getCoachConversationThread({
   }
 
   const [{ data: privateDetails }, { data: messages }] = await Promise.all([
-    supabase
-      .from("conversation_private_details")
-      .select("conversation_id, requester_display_name, guardian_name, preferred_days_times, current_level")
-      .eq("conversation_id", conversationId)
-      .maybeSingle(),
+      supabase
+        .from("conversation_private_details")
+        .select(
+          "conversation_id, requester_display_name, guardian_name, service_id, service_title, service_description, preferred_days_times, current_level",
+        )
+        .eq("conversation_id", conversationId)
+        .maybeSingle(),
     supabase
       .from("messages")
       .select("*")

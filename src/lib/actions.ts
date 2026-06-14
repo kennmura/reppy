@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   getAccountContextOrRedirect,
-  getAccountPrivateDetails,
   getAccountUserOrRedirect,
-  getApplicationProfile,
   getAuthenticatedUserOrRedirect,
   getCoachContextOrRedirect,
   getCoachUserOrRedirect,
+  repairAccountForAuthUser,
 } from "./auth";
+import { isPhoneVerificationBypassed } from "./accountConfig";
 import { getMessageAccess, startCoachTrial } from "./entitlements";
 import { isMissingCoachLocationColumnError, resolveCoachLocationFields } from "./location";
 import {
@@ -64,7 +64,9 @@ function safeAccountNext(value: string) {
 }
 
 function safeLoginPath(value: string, fallback: string) {
-  return value === "/account/login" || value === "/coach/login" ? value : fallback;
+  return value === "/account/login" || value === "/account/login?role=coach" || value === "/coach/login"
+    ? value
+    : fallback;
 }
 
 function optionalInteger(value: string) {
@@ -200,15 +202,13 @@ export async function signInCoach(formData: FormData) {
     redirect(`${loginPath}?error=invalid-login`);
   }
 
-  const profile = await getApplicationProfile(data.user.id);
+  const { profile } = await repairAccountForAuthUser(data.user);
 
   if (!profile || profile.role !== "coach" || profile.account_status !== "active") {
-    await supabase.auth.signOut();
     redirect(`${loginPath}?error=wrong-role`);
   }
 
   if (!data.user.email_confirmed_at) {
-    await supabase.auth.signOut();
     redirect(`${loginPath}?error=verify-email`);
   }
 
@@ -243,22 +243,19 @@ export async function signInAccount(formData: FormData) {
     redirect("/account/login?error=invalid-login");
   }
 
-  const profile = await getApplicationProfile(data.user.id);
+  const { profile, privateDetails } = await repairAccountForAuthUser(data.user);
 
   if (!profile || !["parent", "adult_player"].includes(profile.role) || profile.account_status !== "active") {
-    await supabase.auth.signOut();
     redirect("/account/login?error=wrong-role");
   }
 
-  if (!data.user.email_confirmed_at) {
-    await supabase.auth.signOut();
+  if (!data.user.email_confirmed_at && !profile.email_verified_at) {
     redirect("/account/login?error=verify-email");
   }
 
-  const privateDetails = await getAccountPrivateDetails(data.user.id);
   const phoneVerified = privateDetails?.phone_verified_at || profile.phone_verified_at || data.user.phone_confirmed_at;
 
-  if (!phoneVerified && next !== "/account/dashboard") {
+  if (!phoneVerified && !isPhoneVerificationBypassed() && next !== "/account/dashboard") {
     redirect(`/account/verify-phone?next=${encodeURIComponent(next)}`);
   }
 
@@ -931,21 +928,60 @@ export async function saveCoachProfile(formData: FormData) {
 }
 
 export async function updateAccountProfile(formData: FormData) {
-  const { user } = await getAccountContextOrRedirect();
-  const displayName = textValue(formData, "display_name");
+  const { user, profile } = await getAccountContextOrRedirect();
+  const playerName = textValue(formData, "player_name");
+  const guardianName = textValue(formData, "guardian_name");
+  const playerAge = textValue(formData, "player_age");
+  const currentTeam = textValue(formData, "current_team");
 
-  if (!displayName) {
+  if (!playerName) {
     redirect("/account/settings?error=missing-name");
   }
 
+  if (profile.role === "parent" && !guardianName) {
+    redirect("/account/settings?error=missing-guardian");
+  }
+
+  if (!playerAge || !currentTeam) {
+    redirect("/account/settings?error=missing-player-profile");
+  }
+
   const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
+  const { error: profileError } = await supabase
     .from("user_profiles")
-    .update({ display_name: displayName, updated_at: new Date().toISOString() })
+    .update({ display_name: playerName, updated_at: new Date().toISOString() })
     .eq("id", user.id);
 
-  if (error) {
-    throw error;
+  if (profileError) {
+    throw profileError;
+  }
+
+  const { error: preferenceError } = await supabase.from("user_coaching_preferences").upsert(
+    {
+      user_id: user.id,
+      player_name: playerName,
+      guardian_name: guardianName || null,
+      player_age: playerAge,
+      player_birth_date: textValue(formData, "player_birth_date") || null,
+      current_team: currentTeam,
+      location_text: textValue(formData, "location_text") || null,
+      skill_level: textValue(formData, "skill_level") || null,
+      position: textValue(formData, "position") || null,
+      training_goals: textValue(formData, "training_goals") || null,
+      preferred_days: textValue(formData, "preferred_days") || null,
+      contact_notes: textValue(formData, "contact_notes") || null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+
+  if (preferenceError) {
+    console.error("[updateAccountProfile] Failed to save player profile", {
+      userId: user.id,
+      error: preferenceError.message,
+      code: preferenceError.code,
+    });
+    redirect("/account/settings?error=profile-save-failed");
   }
 
   revalidatePath("/account/dashboard");

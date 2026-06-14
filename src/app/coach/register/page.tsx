@@ -8,6 +8,7 @@ const errors: Record<string, string> = {
   "password-mismatch": "Passwords do not match.",
   "terms-required": "Accept the terms and privacy policy to continue.",
   "missing-location": "Enter your coaching location or ZIP code.",
+  "email-already-registered": "An account already exists for that email. Try signing in instead.",
   "register-failed": "The account could not be created. Try signing in or use another email.",
 };
 
@@ -63,6 +64,12 @@ export default async function CoachRegisterPage({
             Already registered?{" "}
             <Link href="/account/login" className="font-semibold text-[#12355b]">
               Sign in
+            </Link>
+          </p>
+          <p className="mt-4 border-t border-slate-200 pt-4 text-sm text-slate-600">
+            Looking for training?{" "}
+            <Link href="/account/register" className="font-semibold text-[#12355b]">
+              Create a player/parent account
             </Link>
           </p>
         </div>

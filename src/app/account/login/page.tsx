@@ -8,6 +8,9 @@ const errorMessages: Record<string, string> = {
   "wrong-role": "Use the sign-in box that matches your account type.",
   "verify-email": "Verify your email before signing in.",
   "no-profile": "This auth user is missing an account profile record.",
+  "missing-admin-supabase": "Account access is not fully configured yet. Missing secure server settings.",
+  "profile-create-failed": "Your sign-in worked, but account setup could not finish. Please try again.",
+  "invalid-session": "Your session could not be confirmed. Please sign in again.",
   "expired-reset": "That password reset link expired. Request a new one.",
 };
 
@@ -19,26 +22,28 @@ const successMessages: Record<string, string> = {
 export default async function AccountLoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; message?: string; next?: string }>;
+  searchParams: Promise<{ error?: string; message?: string; next?: string; role?: string }>;
 }) {
   const params = await searchParams;
   const error = params.error ? errorMessages[params.error] : null;
   const success = params.message ? successMessages[params.message] : null;
   const next = params.next && params.next.startsWith("/") && !params.next.startsWith("//") ? params.next : "";
+  const isCoachLogin = params.role === "coach";
 
   return (
     <main className="bg-[#f7f8f3] py-14">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl">
+      <div className="mx-auto max-w-xl px-4 sm:px-6 lg:px-8">
+        <div>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6f5e]">
             Sign In / Sign Up
           </p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">
-            Choose your account type
+            {isCoachLogin ? "Coach Account" : "Player/Parent Account"}
           </h1>
           <p className="mt-4 text-lg leading-8 text-slate-700">
-            Player, parent, and coach accounts stay separate so requests, profiles, and messages go
-            to the right place.
+            {isCoachLogin
+              ? "Sign in to manage your coach profile, requests, and messages."
+              : "Sign in to request training, save coaches, and continue conversations."}
           </p>
         </div>
 
@@ -53,26 +58,16 @@ export default async function AccountLoginPage({
           </p>
         ) : null}
 
-        <div className="mt-8 grid gap-5 lg:grid-cols-2">
-          <AuthBox
-            title="Player/Parent Account"
-            body="For parents, guardians, and players looking for private coaching."
-            action={signInAccount}
-            forgotHref="/account/forgot-password"
-            signupHref={next ? `/account/register?next=${encodeURIComponent(next)}` : "/account/register"}
-            signupLabel="Create Player/Parent Account"
-            hiddenFields={{ next }}
-          />
-          <AuthBox
-            title="Coach Account"
-            body="For coaches managing profiles, training requests, and messages."
-            action={signInCoach}
-            forgotHref="/coach/forgot-password"
-            signupHref="/coach/register"
-            signupLabel="Create Coach Account"
-            hiddenFields={{ login_path: "/account/login" }}
-          />
-        </div>
+        <AuthBox
+          title={isCoachLogin ? "Coach Account" : "Player/Parent Account"}
+          action={isCoachLogin ? signInCoach : signInAccount}
+          forgotHref={isCoachLogin ? "/coach/forgot-password" : "/account/forgot-password"}
+          signupHref={isCoachLogin ? "/coach/register" : next ? `/account/register?next=${encodeURIComponent(next)}` : "/account/register"}
+          signupLabel={isCoachLogin ? "Create Coach Account" : "Create Player/Parent Account"}
+          alternateHref={isCoachLogin ? "/account/login" : "/account/login?role=coach"}
+          alternateLabel={isCoachLogin ? "Looking for training? Sign in as a player/parent." : "Are you a coach? Sign in here."}
+          hiddenFields={isCoachLogin ? { login_path: "/account/login?role=coach" } : { next }}
+        />
       </div>
     </main>
   );
@@ -80,25 +75,28 @@ export default async function AccountLoginPage({
 
 function AuthBox({
   title,
-  body,
   action,
   forgotHref,
   signupHref,
   signupLabel,
+  alternateHref,
+  alternateLabel,
   hiddenFields,
 }: {
   title: string;
-  body: string;
   action: (formData: FormData) => void | Promise<void>;
   forgotHref: string;
   signupHref: string;
   signupLabel: string;
+  alternateHref: string;
+  alternateLabel: string;
   hiddenFields?: Record<string, string>;
 }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h2>
-      <p className="mt-3 text-sm leading-6 text-slate-600">{body}</p>
+    <section className="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+        {title === "Coach Account" ? "Coach sign in" : "Sign in"}
+      </h2>
       <form action={action} className="mt-6 grid gap-4">
         {Object.entries(hiddenFields ?? {}).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
@@ -134,6 +132,11 @@ function AuthBox({
         New here?{" "}
         <Link href={signupHref} className="font-semibold text-[#12355b]">
           {signupLabel}
+        </Link>
+      </p>
+      <p className="mt-3 text-sm text-slate-600">
+        <Link href={alternateHref} className="font-semibold text-[#12355b]">
+          {alternateLabel}
         </Link>
       </p>
     </section>

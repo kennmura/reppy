@@ -6,23 +6,35 @@ const errors: Record<string, string> = {
   "missing-supabase": "Set Supabase environment variables before registering.",
   "missing-public-supabase": "Account registration is not configured yet. Missing public Supabase settings.",
   "missing-admin-supabase": "Account registration is not fully configured yet. Missing secure server settings.",
-  "missing-fields": "Enter your name, email, and password.",
+  "missing-fields": "Enter the player name, parent/guardian name when needed, email, and password.",
   "weak-password": "Use a password with at least 8 characters.",
   "password-mismatch": "Passwords do not match.",
   "terms-required": "Accept the terms and privacy policy to continue.",
   "privacy-required": "Accept the privacy policy to continue.",
   "invalid-phone": "Enter a valid mobile phone number.",
+  "email-already-registered": "An account already exists for that email. Try signing in instead.",
   "signup-rate-limited": "Too many signup emails were requested. Please wait a few minutes and try again.",
   "signup-failed": "The account could not be created. Try signing in or use another email.",
+  "signup-not-created": "The account could not be confirmed after signup. Please try again.",
   "profile-create-failed": "Registration started, but profile setup could not finish. Please try again.",
   "private-details-failed": "Registration started, but phone setup could not finish. Please try again.",
+  "profile-incomplete": "Please complete your player profile before requesting training.",
   "register-failed": "The account could not be created. Try signing in or use another email.",
 };
 
 export default async function AccountRegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string; display_name?: string; email?: string; phone?: string; role?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    next?: string;
+    player_name?: string;
+    guardian_name?: string;
+    display_name?: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+  }>;
 }) {
   const params = await searchParams;
   const error = params.error ? errors[params.error] : null;
@@ -51,7 +63,8 @@ export default async function AccountRegisterPage({
             action={registerAccount}
             next={next}
             defaultValues={{
-              display_name: params.display_name ?? "",
+              player_name: params.player_name ?? params.display_name ?? "",
+              guardian_name: params.guardian_name ?? "",
               email: params.email ?? "",
               phone: params.phone ?? "",
               role: defaultRole,
@@ -66,6 +79,14 @@ export default async function AccountRegisterPage({
               Sign in
             </Link>
           </p>
+          <div className="mt-5 border-t border-slate-200 pt-5">
+            <Link
+              href="/coach/register"
+              className="inline-flex w-full items-center justify-center rounded-md border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 hover:border-slate-500 sm:w-auto"
+            >
+              Are you a coach? Sign up as a coach
+            </Link>
+          </div>
         </div>
       </div>
     </main>

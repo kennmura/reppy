@@ -1,32 +1,25 @@
 import { NextResponse } from "next/server";
+import { repairAccountForAuthUser } from "@/lib/auth";
+import { isPhoneVerificationBypassed } from "@/lib/accountConfig";
+import {
+  accountRequestProfileFrom,
+  ageRangeFromProfile,
+  currentLevelFromProfile,
+  isMinorFromProfile,
+  missingAccountRequestProfileFields,
+} from "@/lib/accountProfile";
+import { getUserCoachingPreference } from "@/lib/data";
 import { appUrl, sendFreeCoachLockedRequestEmail } from "@/lib/email";
 import { getMessageAccess } from "@/lib/entitlements";
 import { sendPushNotificationToUser } from "@/lib/push";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase";
-import type { AccountPrivateDetails, Coach, ConversationSafeMetadata, UserProfile } from "@/lib/types";
+import type { Coach, CoachService, ConversationSafeMetadata } from "@/lib/types";
 
-const requiredFields = ["name", "player_age", "training_goals", "preferred_days_times"] as const;
+const requiredFields = ["training_goals", "preferred_days_times"] as const;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function ageRange(value: string) {
-  const age = Number.parseInt(value, 10);
-  if (Number.isNaN(age)) {
-    return value;
-  }
-  if (age < 13) {
-    return "Under 13";
-  }
-  if (age <= 15) {
-    return "13-15";
-  }
-  if (age <= 18) {
-    return "16-18";
-  }
-  return "19+";
 }
 
 function generalArea(value: string) {
@@ -73,7 +66,7 @@ function mapRpcError(message: string) {
     return jsonError("VALIDATION_ERROR", "Please correct the highlighted fields.", 400);
   }
 
-  return jsonError("SERVER_ERROR", "Could not create the training request.", 500);
+  return jsonError("SERVER_ERROR", "Training requests are temporarily unavailable. Please try again.", 500);
 }
 
 export async function POST(request: Request) {
@@ -85,8 +78,31 @@ export async function POST(request: Request) {
       return jsonError("AUTH_REQUIRED", "Create an account or sign in to request training.", 401);
     }
 
-    if (!authData.user.email_confirmed_at) {
+    const { profile, privateDetails } = await repairAccountForAuthUser(authData.user);
+
+    if (!profile || !["parent", "adult_player"].includes(profile.role)) {
+      return jsonError("UNAUTHORIZED", "Use a parent or adult player account to request training.", 403);
+    }
+
+    if (profile.account_status !== "active") {
+      return jsonError("UNAUTHORIZED", "This account cannot request training right now.", 403);
+    }
+
+    if (!authData.user.email_confirmed_at && !profile.email_verified_at) {
       return jsonError("EMAIL_NOT_VERIFIED", "Verify your email before requesting training.", 403);
+    }
+
+    const accountPreference = await getUserCoachingPreference(authData.user.id);
+    const accountProfile = accountRequestProfileFrom({ profile, preference: accountPreference });
+    const missingProfileFields = missingAccountRequestProfileFields(accountProfile);
+
+    if (missingProfileFields.length) {
+      return jsonError(
+        "PROFILE_INCOMPLETE",
+        "Please complete your player profile before requesting training.",
+        409,
+        Object.fromEntries(missingProfileFields.map((field) => [field, "Required"])),
+      );
     }
 
     const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -107,9 +123,8 @@ export async function POST(request: Request) {
       fields.client_request_id = "Invalid submission id";
     }
 
-    const playerAge = cleanString(payload.player_age);
-    const parsedAge = Number.parseInt(playerAge, 10);
-    const isMinor = !Number.isNaN(parsedAge) && parsedAge < 18;
+    const playerAge = accountProfile.playerAge;
+    const isMinor = isMinorFromProfile(accountProfile);
     const guardianConfirmed = payload.guardian_confirmed === true || payload.guardian_confirmed === "on";
 
     if (isMinor && !guardianConfirmed) {
@@ -129,39 +144,20 @@ export async function POST(request: Request) {
     }
 
     const coachSlug = cleanString(payload.coach_slug) || "ken-murakawa";
-    const preferredLocation = cleanString(payload.preferred_location);
-    const computedAgeRange = ageRange(playerAge);
+    const preferredLocation = cleanString(payload.preferred_location) || accountProfile.preferredLocation;
+    const computedAgeRange = ageRangeFromProfile(accountProfile);
     const computedGeneralArea = generalArea(preferredLocation);
-    const firstMessage = [
-      `Training goals: ${cleanString(payload.training_goals)}`,
-      cleanString(payload.message) ? `Message: ${cleanString(payload.message)}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const currentLevel = currentLevelFromProfile(accountProfile);
+    const serviceId = cleanString(payload.service_id);
+    let selectedService: Pick<CoachService, "id" | "title" | "description" | "coach_id"> | null = null;
 
     const supabaseAdmin = createSupabaseAdminClient();
-    const [{ data: profile }, { data: privateDetails }] = await Promise.all([
-      supabaseAdmin
-        .from("user_profiles")
-        .select("*")
-        .eq("id", authData.user.id)
-        .maybeSingle<UserProfile>(),
-      supabaseAdmin
-        .from("account_private_details")
-        .select("*")
-        .eq("user_id", authData.user.id)
-        .maybeSingle<AccountPrivateDetails>(),
-    ]);
-
-    if (!profile || !["parent", "adult_player"].includes(profile.role)) {
-      return jsonError("UNAUTHORIZED", "Use a parent or adult player account to request training.", 403);
-    }
-
-    if (profile.account_status !== "active") {
-      return jsonError("UNAUTHORIZED", "This account cannot request training right now.", 403);
-    }
-
-    if (!privateDetails?.phone_verified_at && !profile.phone_verified_at && !authData.user.phone_confirmed_at) {
+    if (
+      !privateDetails?.phone_verified_at &&
+      !profile.phone_verified_at &&
+      !authData.user.phone_confirmed_at &&
+      !isPhoneVerificationBypassed()
+    ) {
       return jsonError("PHONE_NOT_VERIFIED", "Verify your phone number before requesting training.", 403);
     }
 
@@ -172,31 +168,92 @@ export async function POST(request: Request) {
       .maybeSingle<Pick<Coach, "id" | "user_id" | "is_published" | "accepting_requests">>();
 
     if (!requestedCoach?.is_published || requestedCoach.accepting_requests === false) {
-      return jsonError("COACH_UNAVAILABLE", "This coach is not accepting requests right now.", 404);
+      return jsonError("COACH_UNAVAILABLE", "We could not find this coach.", 404);
     }
 
     if (requestedCoach.user_id === authData.user.id) {
       return jsonError("UNAUTHORIZED", "Coaches cannot request training from their own profile.", 403);
     }
 
+    if (serviceId) {
+      const { data: service, error: serviceError } = await supabaseAdmin
+        .from("coach_services")
+        .select("id, coach_id, title, description")
+        .eq("id", serviceId)
+        .maybeSingle<Pick<CoachService, "id" | "coach_id" | "title" | "description">>();
+
+      if (serviceError) {
+        console.error("[trainingRequests] Failed to verify selected service", {
+          userId: authData.user.id,
+          coachSlug,
+          serviceId,
+          error: serviceError.message,
+          code: serviceError.code,
+        });
+        return jsonError("SERVICE_NOT_FOUND", "We could not find that training service.", 404);
+      }
+
+      if (!service) {
+        return jsonError("SERVICE_NOT_FOUND", "We could not find that training service.", 404);
+      }
+
+      if (service.coach_id !== requestedCoach.id) {
+        return jsonError("SERVICE_COACH_MISMATCH", "That training service does not belong to this coach.", 400);
+      }
+
+      selectedService = service;
+    }
+
+    const firstMessage = [
+      `Service: ${selectedService?.title ?? "General training request"}`,
+      `Training goals: ${cleanString(payload.training_goals)}`,
+      `Player: ${accountProfile.playerName}`,
+      accountProfile.guardianName ? `Parent/guardian: ${accountProfile.guardianName}` : "",
+      `Club/team: ${accountProfile.currentTeam}`,
+      cleanString(payload.message) ? `Message: ${cleanString(payload.message)}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    console.info("[trainingRequests] Creating training request", {
+      userId: authData.user.id,
+      role: profile.role,
+      coachSlug,
+      coachId: requestedCoach.id,
+      serviceId: selectedService?.id ?? null,
+      serviceTitle: selectedService?.title ?? "General training request",
+      profileComplete: true,
+      phoneVerificationBypassed: isPhoneVerificationBypassed(),
+    });
+
     const { data: rpcRows, error: rpcError } = await supabaseAuth.rpc("create_training_request_verified", {
       p_client_request_id: clientRequestId,
       p_coach_slug: coachSlug,
-      p_requester_display_name: cleanString(payload.name),
+      p_requester_display_name: accountProfile.playerName,
       p_player_age: playerAge,
       p_age_range: computedAgeRange,
-      p_current_level: cleanString(payload.current_level) || null,
+      p_current_level: currentLevel || null,
       p_training_goals: cleanString(payload.training_goals),
       p_preferred_location: preferredLocation || null,
       p_general_location: computedGeneralArea,
       p_preferred_days_times: cleanString(payload.preferred_days_times) || null,
-      p_guardian_name: cleanString(payload.guardian_name) || null,
+      p_guardian_name: accountProfile.guardianName || null,
       p_is_minor: isMinor,
       p_guardian_confirmed: guardianConfirmed,
       p_first_message: firstMessage,
     });
 
     if (rpcError || !rpcRows?.length) {
+      console.error("[trainingRequests] Supabase request RPC failed", {
+        userId: authData.user.id,
+        role: profile.role,
+        coachId: requestedCoach.id,
+        coachSlug,
+        serviceId: selectedService?.id ?? null,
+        serviceTitle: selectedService?.title ?? "General training request",
+        error: rpcError?.message ?? "RPC returned no rows",
+        code: rpcError?.code,
+      });
       return mapRpcError(rpcError?.message ?? "SERVER_ERROR");
     }
 
@@ -208,6 +265,30 @@ export async function POST(request: Request) {
     const conversationId = rpcResult.conversation_id;
     const requestId = rpcResult.request_id;
     const supabase = supabaseAdmin;
+
+    if (selectedService) {
+      const servicePayload = {
+        service_id: selectedService.id,
+        service_title: selectedService.title,
+        service_description: selectedService.description,
+      };
+      const [{ error: requestServiceError }, { error: conversationServiceError }] = await Promise.all([
+        supabase.from("training_requests").update(servicePayload).eq("id", requestId),
+        supabase.from("conversation_private_details").update(servicePayload).eq("conversation_id", conversationId),
+      ]);
+
+      if (requestServiceError || conversationServiceError) {
+        console.error("[trainingRequests] Failed to persist selected service metadata", {
+          userId: authData.user.id,
+          requestId,
+          conversationId,
+          requestError: requestServiceError?.message,
+          requestCode: requestServiceError?.code,
+          conversationError: conversationServiceError?.message,
+          conversationCode: conversationServiceError?.code,
+        });
+      }
+    }
     const { data: conversation } = await supabase
       .from("conversations")
       .select(
@@ -271,7 +352,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, requestId, conversationId }, { status: rpcResult.was_existing ? 200 : 201 });
-  } catch {
-    return jsonError("VALIDATION_ERROR", "Please correct the highlighted fields.", 400);
+  } catch (error) {
+    console.error("[trainingRequests] Unexpected request creation failure", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return jsonError("SERVER_ERROR", "Training requests are temporarily unavailable. Please try again.", 500);
   }
 }

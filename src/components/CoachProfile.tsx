@@ -3,17 +3,20 @@ import { Award, Bookmark, Camera, MessageSquare, Star } from "lucide-react";
 import { LocationSection } from "./LocationSection";
 import { PricingSection } from "./PricingSection";
 import { RequestTrainingForm } from "./RequestTrainingForm";
-import { ServiceCard } from "./ServiceCard";
+import { ServiceSelectionPanel } from "./ServiceSelectionPanel";
 import { toggleSavedCoach } from "@/lib/actions";
+import { accountRequestProfileFrom, isAccountRequestProfileComplete } from "@/lib/accountProfile";
 import { getRequestingAccountState } from "@/lib/auth";
-import { getSavedCoachIdsForUser } from "@/lib/data";
-import type { Coach, CoachProfileData } from "@/lib/types";
+import { getSavedCoachIdsForUser, getUserCoachingPreference } from "@/lib/data";
+import type { Coach, CoachProfileData, UserCoachingPreference } from "@/lib/types";
 
 export async function CoachProfile({ profile }: { profile: CoachProfileData }) {
   const { coach, services, audiences, testimonials, credentials = [] } = profile;
   const accountState = await getRequestingAccountState();
   const savedCoachIds =
     accountState.status === "verified" ? await getSavedCoachIdsForUser(accountState.user.id, [coach.id]) : [];
+  const accountPreference =
+    accountState.status === "verified" ? await getUserCoachingPreference(accountState.user.id) : null;
   const isSaved = savedCoachIds.includes(coach.id);
   const requestCtaLabel = coach.accepting_requests === false ? "Not accepting requests" : "Request Training";
 
@@ -124,13 +127,7 @@ export async function CoachProfile({ profile }: { profile: CoachProfileData }) {
                 </Link>
               </div>
               <div className="mt-5 grid gap-4">
-                {services.length ? (
-                  services.map((service) => <ServiceCard key={service.id} service={service} />)
-                ) : (
-                  <p className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                    Services will appear here after the coach adds session details.
-                  </p>
-                )}
+                <ServiceSelectionPanel services={services} />
               </div>
             </section>
           </div>
@@ -176,7 +173,12 @@ export async function CoachProfile({ profile }: { profile: CoachProfileData }) {
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <RequestTrainingGate coach={coach} accountState={accountState} />
+            <RequestTrainingGate
+              coach={coach}
+              accountState={accountState}
+              accountPreference={accountPreference}
+              services={services}
+            />
           </div>
         </div>
       </section>
@@ -320,15 +322,35 @@ function coachLocationLabel(coach: Coach) {
 function RequestTrainingGate({
   coach,
   accountState,
+  accountPreference,
+  services,
 }: {
   coach: Coach;
   accountState: Awaited<ReturnType<typeof getRequestingAccountState>>;
+  accountPreference: UserCoachingPreference | null;
+  services: CoachProfileData["services"];
 }) {
   const intendedPath = `/coaches/${coach.slug}?requestTraining=1#request-training`;
   const encodedNext = encodeURIComponent(intendedPath);
 
   if (accountState.status === "verified") {
-    return <RequestTrainingForm coachSlug={coach.slug} />;
+    const accountProfile = accountRequestProfileFrom({
+      profile: accountState.profile,
+      preference: accountPreference,
+    });
+
+    if (!isAccountRequestProfileComplete(accountProfile)) {
+      return (
+        <VerificationPrompt
+          title="Complete your player profile before requesting training."
+          body="Add the player name, parent or guardian name, player age, and current club/team once. Reppy will use it for future requests."
+          href="/account/settings?error=missing-player-profile"
+          label="Complete player profile"
+        />
+      );
+    }
+
+    return <RequestTrainingForm coachId={coach.id} coachSlug={coach.slug} services={services} accountProfile={accountProfile} />;
   }
 
   if (accountState.status === "anonymous") {

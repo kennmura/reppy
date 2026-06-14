@@ -27,6 +27,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <Link href="/admin/coaches" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
             Coaches
           </Link>
+          <Link href="/admin/accounts" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
+            Accounts
+          </Link>
           <Link href="/admin/coach-applications" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
             Applications
           </Link>

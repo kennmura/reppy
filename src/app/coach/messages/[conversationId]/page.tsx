@@ -99,7 +99,8 @@ export default async function CoachMessageThreadPage({
               </button>
             </form>
           </div>
-          <div className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
+          <div className="mt-5 grid gap-3 text-sm sm:grid-cols-4">
+            <Meta label="Service" value={thread.privateDetails?.service_title} />
             <Meta label="Current level" value={thread.privateDetails?.current_level} />
             <Meta label="Preferred days/times" value={thread.privateDetails?.preferred_days_times} />
             <Meta label="Guardian" value={thread.privateDetails?.guardian_name} />

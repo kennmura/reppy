@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { type HTMLAttributes, useEffect, useState } from "react";
+import type { AccountRequestProfile } from "@/lib/accountProfile";
+import type { CoachService } from "@/lib/types";
 
 type SubmissionState = "idle" | "submitting" | "success" | "error";
 
@@ -23,17 +25,44 @@ const requestErrorMessages: Record<string, string> = {
   AUTH_REQUIRED: "Please sign in or create a Player/Parent Account before sending a training request.",
   EMAIL_NOT_VERIFIED: "Verify your email before sending a training request.",
   PHONE_NOT_VERIFIED: "Verify your phone before sending a training request.",
+  VALIDATION_ERROR: "Please correct the highlighted fields.",
+  PROFILE_INCOMPLETE: "Please complete your player profile before requesting training.",
+  COACH_UNAVAILABLE: "We could not find this coach.",
+  SERVICE_NOT_FOUND: "We could not find that training service.",
+  SERVICE_COACH_MISMATCH: "That training service does not belong to this coach.",
+  UNAUTHORIZED: "You must be logged in as a player or parent to request training.",
   DUPLICATE_ACTIVE_REQUEST:
     "You already have an active request with this coach. Open your Message Center to continue the conversation.",
   RATE_LIMITED: "You are sending requests too quickly. Please wait and try again.",
+  SERVER_ERROR: "Training requests are temporarily unavailable. Please try again.",
 };
 
-export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?: string }) {
+type SelectedService = {
+  id: string;
+  title: string;
+  description: string;
+};
+
+export function RequestTrainingForm({
+  coachId,
+  coachSlug = "ken-murakawa",
+  services = [],
+  accountProfile,
+}: {
+  coachId: string;
+  coachSlug?: string;
+  services?: CoachService[];
+  accountProfile: AccountRequestProfile;
+}) {
   const [state, setState] = useState<SubmissionState>("idle");
   const [error, setError] = useState("");
   const [showAuthLinks, setShowAuthLinks] = useState(false);
+  const [showProfileLink, setShowProfileLink] = useState(false);
   const [conversationId, setConversationId] = useState("");
   const [clientRequestId, setClientRequestId] = useState(() => crypto.randomUUID());
+  const [selectedService, setSelectedService] = useState<SelectedService | null>(null);
+
+  useServiceSelection((service) => setSelectedService(service));
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,17 +73,22 @@ export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?
     const form = event.currentTarget;
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData.entries());
+    if (!payload.coach_slug) {
+      payload.coach_slug = coachSlug;
+    }
+    payload.coach_id = coachId;
 
     setState("submitting");
     setError("");
     setShowAuthLinks(false);
+    setShowProfileLink(false);
     setConversationId("");
 
     try {
       const response = await fetch("/api/training-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, coach_slug: coachSlug, client_request_id: clientRequestId }),
+        body: JSON.stringify(payload),
       });
 
       const contentType = response.headers.get("content-type") ?? "";
@@ -64,8 +98,17 @@ export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?
 
       if (!response.ok || !body?.success) {
         const code = body && !body.success ? body.error.code : "";
-        setError(requestErrorMessages[code] ?? (body && !body.success ? body.error.message : "Something went wrong. Please try again."));
+        const fieldErrors =
+          body && !body.success && body.error.fields
+            ? Object.values(body.error.fields)
+                .filter(Boolean)
+                .join(" ")
+            : "";
+        const message =
+          requestErrorMessages[code] ?? (body && !body.success ? body.error.message : "Something went wrong. Please try again.");
+        setError(fieldErrors ? `${message} ${fieldErrors}` : message);
         setShowAuthLinks(code === "AUTH_REQUIRED");
+        setShowProfileLink(code === "PROFILE_INCOMPLETE");
         setState("error");
         return;
       }
@@ -82,18 +125,55 @@ export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?
 
   return (
     <form onSubmit={onSubmit} className="grid gap-5">
+      <input type="hidden" name="coach_id" value={coachId} />
       <input type="hidden" name="coach_slug" value={coachSlug} />
       <input type="hidden" name="client_request_id" value={clientRequestId} />
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Player/parent name" name="name" required />
-        <Field label="Player age" name="player_age" required />
-        <Field label="Current level/team" name="current_level" />
-        <Field label="Preferred location" name="preferred_location" />
-        <Field label="Parent/guardian name" name="guardian_name" />
+      <input type="hidden" name="service_id" value={selectedService?.id ?? ""} />
+      <input type="hidden" name="service_title" value={selectedService?.title ?? ""} />
+      <input type="hidden" name="service_description" value={selectedService?.description ?? ""} />
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Player profile</p>
+        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+          <SummaryItem label="Player" value={accountProfile.playerName} />
+          <SummaryItem label="Parent/guardian" value={accountProfile.guardianName || "Not needed"} />
+          <SummaryItem label="Age" value={accountProfile.playerAge} />
+          <SummaryItem label="Club/team" value={accountProfile.currentTeam} />
+        </dl>
       </div>
-      <Field label="Training goals" name="training_goals" required textarea />
-      <Field label="Preferred days/times" name="preferred_days_times" textarea />
-      <Field label="Message" name="message" textarea />
+      <div className="rounded-md border border-[#d7e5dc] bg-[#f3f8f5] p-4">
+        <p className="text-sm font-semibold text-slate-950">Selected service</p>
+        <p className="mt-1 text-sm leading-6 text-slate-700">
+          {selectedService?.title ?? "General training request"}
+        </p>
+        {!selectedService && services.length ? (
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            Select a service card above to request a specific session.
+          </p>
+        ) : null}
+      </div>
+      <Field
+        label="Training goals"
+        name="training_goals"
+        defaultValue={accountProfile.goals}
+        autoComplete="off"
+        required
+        textarea
+      />
+      <Field
+        label="Preferred days/times"
+        name="preferred_days_times"
+        defaultValue={accountProfile.preferredDays}
+        autoComplete="off"
+        required
+        textarea
+      />
+      <Field
+        label="Preferred location"
+        name="preferred_location"
+        defaultValue={accountProfile.preferredLocation}
+        autoComplete="street-address"
+      />
+      <Field label="Message" name="message" autoComplete="off" textarea />
       <label className="flex gap-3 rounded-md border border-[#d7e5dc] bg-[#f3f8f5] px-4 py-3 text-sm leading-6 text-slate-700">
         <input name="guardian_confirmed" type="checkbox" required className="mt-1 h-4 w-4" />
         <span>
@@ -141,10 +221,38 @@ export function RequestTrainingForm({ coachSlug = "ken-murakawa" }: { coachSlug?
                 </a>
               </div>
             ) : null}
+            {showProfileLink ? (
+              <a href="/account/settings?error=missing-player-profile" className="font-semibold text-[#12355b]">
+                Complete player profile
+              </a>
+            ) : null}
           </div>
         ) : null}
       </div>
     </form>
+  );
+}
+
+function useServiceSelection(onSelect: (service: SelectedService) => void) {
+  useEffect(() => {
+    function onServiceSelected(event: Event) {
+      const detail = (event as CustomEvent<SelectedService>).detail;
+      if (detail?.id && detail.title) {
+        onSelect(detail);
+      }
+    }
+
+    window.addEventListener("reppy:service-selected", onServiceSelected);
+    return () => window.removeEventListener("reppy:service-selected", onServiceSelected);
+  }, [onSelect]);
+}
+
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</dt>
+      <dd className="mt-1 font-medium text-slate-950">{value}</dd>
+    </div>
   );
 }
 
@@ -154,12 +262,18 @@ function Field({
   type = "text",
   required = false,
   textarea = false,
+  autoComplete,
+  inputMode,
+  defaultValue = "",
 }: {
   label: string;
   name: string;
   type?: string;
   required?: boolean;
   textarea?: boolean;
+  autoComplete?: string;
+  inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
+  defaultValue?: string;
 }) {
   const className =
     "mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition focus:border-[#12355b] focus:ring-2 focus:ring-[#12355b]/15";
@@ -169,9 +283,26 @@ function Field({
       {label}
       {required ? <span className="text-red-700"> *</span> : null}
       {textarea ? (
-        <textarea name={name} required={required} rows={4} className={className} />
+        <textarea
+          id={name}
+          name={name}
+          required={required}
+          rows={4}
+          autoComplete={autoComplete}
+          defaultValue={defaultValue}
+          className={className}
+        />
       ) : (
-        <input name={name} type={type} required={required} className={className} />
+        <input
+          id={name}
+          name={name}
+          type={type}
+          required={required}
+          autoComplete={autoComplete}
+          inputMode={inputMode}
+          defaultValue={defaultValue}
+          className={className}
+        />
       )}
     </label>
   );

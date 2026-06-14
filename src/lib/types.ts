@@ -92,6 +92,29 @@ export type UserProfile = {
   updated_at?: string | null;
 };
 
+export type AdminAuthUserSummary = {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  created_at: string | null;
+  last_sign_in_at: string | null;
+  email_confirmed_at: string | null;
+  phone_confirmed_at: string | null;
+};
+
+export type AdminAccountSummary = UserProfile & {
+  auth_user: AdminAuthUserSummary | null;
+};
+
+export type AdminAccountDetail = {
+  profile: UserProfile;
+  privateDetails: AccountPrivateDetails | null;
+  preference: UserCoachingPreference | null;
+  conversations: ConversationSafeMetadata[];
+  savedCoaches: Coach[];
+  authUser: AdminAuthUserSummary | null;
+};
+
 export type AccountPrivateDetails = {
   user_id: string;
   phone_e164: string | null;
@@ -139,6 +162,9 @@ export type TrainingRequest = {
   id: string;
   coach_id: string | null;
   coach_slug: string | null;
+  service_id?: string | null;
+  service_title?: string | null;
+  service_description?: string | null;
   name: string;
   email: string;
   phone: string | null;
@@ -267,6 +293,9 @@ export type ConversationPrivateDetails = {
   guardian_name: string | null;
   guardian_email?: string | null;
   guardian_phone?: string | null;
+  service_id?: string | null;
+  service_title?: string | null;
+  service_description?: string | null;
   exact_location?: string | null;
   preferred_days_times: string | null;
   current_level: string | null;
@@ -357,6 +386,12 @@ export type CoachProfileData = {
 
 export type UserCoachingPreference = {
   user_id: string;
+  player_name?: string | null;
+  guardian_name?: string | null;
+  player_age?: string | null;
+  player_birth_date?: string | null;
+  current_team?: string | null;
+  contact_notes?: string | null;
   sport: string | null;
   location_text: string | null;
   latitude: number | null;

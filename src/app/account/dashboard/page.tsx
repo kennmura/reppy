@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AccountShell } from "@/components/account/AccountShell";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
+import { accountRequestProfileFrom, isAccountRequestProfileComplete } from "@/lib/accountProfile";
 import { getAccountContextOrRedirect } from "@/lib/auth";
 import { getAccountConversations, getSavedCoachesForUser, getUserCoachingPreference } from "@/lib/data";
 import { getUnreadNotificationCount } from "@/lib/notifications";
@@ -19,6 +20,8 @@ export default async function AccountDashboardPage() {
     (total, conversation) => total + Number(conversation.participant_unread_count ?? 0),
     0,
   );
+  const requestProfile = accountRequestProfileFrom({ profile, preference });
+  const profileComplete = isAccountRequestProfileComplete(requestProfile);
 
   return (
     <AccountShell userId={user.id} notificationCount={notificationCount}>
@@ -49,6 +52,22 @@ export default async function AccountDashboardPage() {
             </Link>
           </div>
         </section>
+
+        {!profileComplete ? (
+          <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950">
+            <h2 className="text-lg font-semibold">Complete your player profile</h2>
+            <p className="mt-2 text-sm leading-6">
+              Add player name, parent/guardian name, player age, and current club/team once so
+              Reppy can use it automatically for training requests.
+            </p>
+            <Link
+              href="/account/settings?error=missing-player-profile"
+              className="mt-4 inline-flex rounded-md bg-[#12355b] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0d2948]"
+            >
+              Complete profile
+            </Link>
+          </section>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-3">
           <Metric label="Training requests" value={conversations.length} />

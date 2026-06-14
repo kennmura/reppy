@@ -171,6 +171,9 @@ alter table training_requests add column if not exists guardian_required boolean
 alter table training_requests add column if not exists guardian_confirmed_at timestamp with time zone;
 alter table training_requests add column if not exists parent_follow_up_sent_at timestamp with time zone;
 alter table training_requests add column if not exists client_request_id uuid;
+alter table training_requests add column if not exists service_id uuid references coach_services(id) on delete set null;
+alter table training_requests add column if not exists service_title text;
+alter table training_requests add column if not exists service_description text;
 
 create table if not exists user_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -199,6 +202,38 @@ create table if not exists account_private_details (
   constraint account_private_details_account_type_check
     check (account_type is null or account_type in ('parent', 'adult_player'))
 );
+
+create table if not exists user_coaching_preferences (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  player_name text,
+  guardian_name text,
+  player_age text,
+  player_birth_date date,
+  current_team text,
+  contact_notes text,
+  sport text,
+  location_text text,
+  latitude double precision,
+  longitude double precision,
+  search_radius_miles integer,
+  age_group text,
+  skill_level text,
+  position text,
+  training_goals text,
+  price_min integer,
+  price_max integer,
+  training_format text,
+  preferred_days text,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+alter table user_coaching_preferences add column if not exists player_name text;
+alter table user_coaching_preferences add column if not exists guardian_name text;
+alter table user_coaching_preferences add column if not exists player_age text;
+alter table user_coaching_preferences add column if not exists player_birth_date date;
+alter table user_coaching_preferences add column if not exists current_team text;
+alter table user_coaching_preferences add column if not exists contact_notes text;
 
 create table if not exists subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -277,6 +312,9 @@ create table if not exists conversation_private_details (
   guardian_name text,
   guardian_email text,
   guardian_phone text,
+  service_id uuid references coach_services(id) on delete set null,
+  service_title text,
+  service_description text,
   exact_location text,
   preferred_days_times text,
   current_level text
@@ -456,6 +494,7 @@ alter table account_private_details enable row level security;
 alter table subscriptions enable row level security;
 alter table conversations enable row level security;
 alter table conversation_private_details enable row level security;
+alter table user_coaching_preferences enable row level security;
 alter table messages enable row level security;
 alter table contact_share_events enable row level security;
 alter table conversation_participants enable row level security;
@@ -486,6 +525,7 @@ create index if not exists premium_access_grants_coach_user_id_idx on premium_ac
 create index if not exists account_private_details_phone_idx
   on account_private_details(phone_e164)
   where phone_e164 is not null;
+create index if not exists training_requests_service_idx on training_requests(service_id);
 
 create or replace function public.coach_has_message_access(target_coach_user_id uuid)
 returns boolean
@@ -546,6 +586,19 @@ drop policy if exists "Users can insert own private account details" on account_
 create policy "Users can insert own private account details"
 on account_private_details for insert
 to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "Users can read own coaching preferences" on user_coaching_preferences;
+create policy "Users can read own coaching preferences"
+on user_coaching_preferences for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "Users can upsert own coaching preferences" on user_coaching_preferences;
+create policy "Users can upsert own coaching preferences"
+on user_coaching_preferences for all
+to authenticated
+using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
 drop policy if exists "Coaches can read own safe conversation metadata" on conversations;

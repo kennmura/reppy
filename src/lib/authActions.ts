@@ -2,12 +2,14 @@
 
 import { redirect } from "next/navigation";
 import {
+  ensureAccountPrivateDetails,
   ensureApplicationProfile,
   getAccountContextOrRedirect,
   getAccountPrivateDetails,
   getApplicationProfile,
   getAuthenticatedUserOrRedirect,
 } from "./auth";
+import { isPhoneVerificationBypassed } from "./accountConfig";
 import {
   createSupabaseAdminClient,
   createSupabaseServerClient,
@@ -38,7 +40,7 @@ function safeNext(value: string, fallback = "/account/dashboard") {
 
 function redirectAccountRegisterWithError(formData: FormData, error: string, next: string): never {
   const params = new URLSearchParams({ error });
-  const preservedKeys = ["display_name", "email", "phone", "role"];
+  const preservedKeys = ["player_name", "guardian_name", "display_name", "email", "phone", "role"];
 
   for (const key of preservedKeys) {
     const value = textValue(formData, key);
@@ -133,6 +135,34 @@ async function cleanupNewAuthUser(userId: string, reason: string) {
   }
 }
 
+async function findAuthUserByEmail(email: string) {
+  const admin = createSupabaseAdminClient();
+  const normalizedEmail = email.toLowerCase();
+
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+
+    if (error) {
+      console.error("[registerAccount] Could not precheck duplicate auth email", {
+        error: serializableSupabaseError(error),
+      });
+      return null;
+    }
+
+    const existing = data.users.find((user) => user.email?.toLowerCase() === normalizedEmail);
+    if (existing) {
+      return existing;
+    }
+
+    if (data.users.length < 1000) {
+      return null;
+    }
+  }
+
+  console.error("[registerAccount] Duplicate email precheck reached the pagination limit");
+  return null;
+}
+
 async function registerUser({
   formData,
   role,
@@ -177,8 +207,16 @@ async function registerUser({
     redirect(`${resolvedRegisterPath}?error=terms-required`);
   }
 
+  const duplicateAuthUser = await findAuthUserByEmail(email);
+  if (duplicateAuthUser) {
+    console.error("[registerUser] Duplicate registration blocked", {
+      role,
+      existingUserId: duplicateAuthUser.id,
+    });
+    redirect(`${resolvedRegisterPath}?error=email-already-registered`);
+  }
+
   const supabase = await createSupabaseServerClient();
-  await supabase.auth.signOut();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -194,6 +232,14 @@ async function registerUser({
 
   if (error || !data.user) {
     redirect(`${resolvedRegisterPath}?error=register-failed`);
+  }
+
+  if (!data.user.identities?.length) {
+    console.error("[registerUser] Supabase signUp did not create a new auth identity", {
+      role,
+      userId: data.user.id,
+    });
+    redirect(`${resolvedRegisterPath}?error=email-already-registered`);
   }
 
   await ensureApplicationProfile({
@@ -320,7 +366,7 @@ export async function registerAccount(formData: FormData) {
   const role = textValue(formData, "role") === "adult_player" ? "adult_player" : "parent";
   const phone = normalizePhoneE164(textValue(formData, "phone"));
   const acceptedPrivacy = formData.get("privacy") === "on";
-  const next = safeNext(textValue(formData, "next"), "/account/dashboard");
+  const next = safeNext(textValue(formData, "next"), "/account/settings?error=missing-player-profile");
 
   if (!phone) {
     redirectAccountRegisterWithError(formData, "invalid-phone", next);
@@ -330,12 +376,14 @@ export async function registerAccount(formData: FormData) {
     redirectAccountRegisterWithError(formData, "privacy-required", next);
   }
 
-  const displayName = textValue(formData, "display_name");
+  const playerName = textValue(formData, "player_name") || textValue(formData, "display_name");
+  const guardianName = textValue(formData, "guardian_name");
+  const displayName = playerName;
   const email = textValue(formData, "email").toLowerCase();
   const { password, error: passwordError } = passwordPair(formData);
   const acceptedTerms = formData.get("terms") === "on";
 
-  if (!displayName || !email || !password) {
+  if (!playerName || !email || !password || (role === "parent" && !guardianName)) {
     redirectAccountRegisterWithError(formData, "missing-fields", next);
   }
 
@@ -357,14 +405,30 @@ export async function registerAccount(formData: FormData) {
     redirectAccountRegisterWithError(formData, "missing-admin-supabase", next);
   }
 
+  const admin = createSupabaseAdminClient();
+  const phoneBypassed = isPhoneVerificationBypassed();
+  const duplicateAuthUser = await findAuthUserByEmail(email);
+
+  if (duplicateAuthUser) {
+    console.error("[registerAccount] Duplicate account registration blocked", {
+      role,
+      existingUserId: duplicateAuthUser.id,
+    });
+    redirectAccountRegisterWithError(formData, "email-already-registered", next);
+  }
+
+  console.info("[registerAccount] Starting account registration", {
+    role,
+    phoneVerificationBypassed: phoneBypassed,
+  });
+
   const supabase = await createSupabaseServerClient();
+  const callbackNext = phoneBypassed ? next : `/account/verify-phone?next=${encodeURIComponent(next)}`;
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: appUrl(
-        `/auth/callback?next=${encodeURIComponent(`/account/verify-phone?next=${encodeURIComponent(next)}`)}`,
-      ),
+      emailRedirectTo: appUrl(`/auth/callback?next=${encodeURIComponent(callbackNext)}`),
       data: {
         full_name: displayName,
         role,
@@ -381,6 +445,24 @@ export async function registerAccount(formData: FormData) {
   }
 
   const createdNewAuthUser = Boolean(data.user.identities?.length);
+  if (!createdNewAuthUser) {
+    console.error("[registerAccount] Supabase signUp did not create a new auth identity", {
+      role,
+      userId: data.user.id,
+    });
+    redirectAccountRegisterWithError(formData, "email-already-registered", next);
+  }
+
+  const { data: confirmedAuthUser, error: getUserError } = await admin.auth.admin.getUserById(data.user.id);
+  if (getUserError || !confirmedAuthUser.user) {
+    console.error("[registerAccount] Supabase auth user was not readable after signup", {
+      role,
+      userId: data.user.id,
+      error: serializableSupabaseError(getUserError ?? new Error("Admin getUserById returned no user")),
+    });
+    await cleanupNewAuthUser(data.user.id, "signup-not-created");
+    redirectAccountRegisterWithError(formData, "signup-not-created", next);
+  }
 
   try {
     await ensureApplicationProfile({
@@ -388,6 +470,7 @@ export async function registerAccount(formData: FormData) {
       role,
       displayName,
       emailVerifiedAt: data.user.email_confirmed_at ?? null,
+      phoneVerifiedAt: phoneBypassed ? new Date().toISOString() : data.user.phone_confirmed_at ?? null,
     });
   } catch (profileError) {
     console.error("[registerAccount] Failed to create user profile", {
@@ -401,20 +484,14 @@ export async function registerAccount(formData: FormData) {
     redirectAccountRegisterWithError(formData, "profile-create-failed", next);
   }
 
-  const admin = createSupabaseAdminClient();
-  const now = new Date().toISOString();
-  const { error: privateDetailsError } = await admin.from("account_private_details").upsert(
-    {
-      user_id: data.user.id,
-      phone_e164: phone,
-      phone_verified_at: null,
-      account_type: role,
-      updated_at: now,
-    },
-    { onConflict: "user_id" },
-  );
-
-  if (privateDetailsError) {
+  try {
+    await ensureAccountPrivateDetails({
+      userId: data.user.id,
+      accountType: role,
+      phoneE164: phone,
+      phoneVerifiedAt: phoneBypassed ? new Date().toISOString() : data.user.phone_confirmed_at ?? null,
+    });
+  } catch (privateDetailsError) {
     console.error("[registerAccount] Failed to upsert private account details", {
       userId: data.user.id,
       role,
@@ -426,10 +503,46 @@ export async function registerAccount(formData: FormData) {
     redirectAccountRegisterWithError(formData, "private-details-failed", next);
   }
 
-  if (data.session && data.user.email_confirmed_at) {
-    redirect(`/account/verify-phone?next=${encodeURIComponent(next)}`);
+  try {
+    const { error: preferenceError } = await admin.from("user_coaching_preferences").upsert(
+      {
+        user_id: data.user.id,
+        player_name: playerName,
+        guardian_name: guardianName || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+
+    if (preferenceError) {
+      console.error("[registerAccount] Failed to seed player profile fields", {
+        userId: data.user.id,
+        role,
+        error: serializableSupabaseError(preferenceError),
+      });
+    }
+  } catch (preferenceError) {
+    console.error("[registerAccount] Failed to seed player profile fields", {
+      userId: data.user.id,
+      role,
+      error: serializableSupabaseError(preferenceError),
+    });
   }
 
+  if (data.session && data.user.email_confirmed_at) {
+    console.info("[registerAccount] Account registration completed with immediate session", {
+      role,
+      userId: data.user.id,
+      phoneVerificationBypassed: phoneBypassed,
+    });
+    redirect(phoneBypassed ? next : `/account/verify-phone?next=${encodeURIComponent(next)}`);
+  }
+
+  console.info("[registerAccount] Account registration completed; email verification required", {
+    role,
+    userId: data.user.id,
+    phoneVerificationBypassed: phoneBypassed,
+  });
   redirect(`/account/login?message=verify-email&next=${encodeURIComponent(next)}`);
 }
 
@@ -546,7 +659,7 @@ export async function syncProfileEmailVerification(userId: string, emailVerified
 
 export async function resendAccountConfirmation(formData: FormData) {
   const user = await getAuthenticatedUserOrRedirect("/account/login");
-  const next = safeNext(textValue(formData, "next"), "/account/verify-phone");
+  const next = safeNext(textValue(formData, "next"), isPhoneVerificationBypassed() ? "/account/dashboard" : "/account/verify-phone");
 
   if (!user.email) {
     redirect("/account/verify-email?error=missing-email");

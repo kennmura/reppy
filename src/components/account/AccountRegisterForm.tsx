@@ -7,7 +7,8 @@ type AccountRegisterFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   next: string;
   defaultValues?: {
-    display_name?: string;
+    player_name?: string;
+    guardian_name?: string;
     email?: string;
     phone?: string;
     role?: "parent" | "adult_player";
@@ -16,6 +17,7 @@ type AccountRegisterFormProps = {
 
 export function AccountRegisterForm({ action, next, defaultValues }: AccountRegisterFormProps) {
   const [clientError, setClientError] = useState("");
+  const [role, setRole] = useState(defaultValues?.role ?? "parent");
 
   return (
     <form
@@ -36,10 +38,18 @@ export function AccountRegisterForm({ action, next, defaultValues }: AccountRegi
         </p>
       ) : null}
       <Field
-        label="Full name"
-        name="display_name"
-        defaultValue={defaultValues?.display_name ?? ""}
+        label="Player name"
+        name="player_name"
+        defaultValue={defaultValues?.player_name ?? ""}
         autoComplete="name"
+        onChange={() => setClientError("")}
+      />
+      <Field
+        label={role === "adult_player" ? "Parent/guardian name optional" : "Parent/guardian name"}
+        name="guardian_name"
+        defaultValue={defaultValues?.guardian_name ?? ""}
+        autoComplete="name"
+        required={role === "parent"}
         onChange={() => setClientError("")}
       />
       <Field
@@ -62,7 +72,8 @@ export function AccountRegisterForm({ action, next, defaultValues }: AccountRegi
         Account type
         <select
           name="role"
-          defaultValue={defaultValues?.role ?? "parent"}
+          value={role}
+          onChange={(event) => setRole(event.currentTarget.value === "adult_player" ? "adult_player" : "parent")}
           className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#12355b] focus:ring-2 focus:ring-[#12355b]/15"
         >
           <option value="parent">Parent or guardian</option>
@@ -120,6 +131,7 @@ function Field({
   defaultValue,
   type = "text",
   autoComplete,
+  required = true,
   onChange,
 }: {
   label: string;
@@ -127,6 +139,7 @@ function Field({
   defaultValue: string;
   type?: string;
   autoComplete?: string;
+  required?: boolean;
   onChange: () => void;
 }) {
   return (
@@ -135,7 +148,7 @@ function Field({
       <input
         name={name}
         type={type}
-        required
+        required={required}
         defaultValue={defaultValue}
         autoComplete={autoComplete}
         onChange={onChange}
