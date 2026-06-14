@@ -13,6 +13,7 @@ import {
   createSupabaseServerClient,
   hasSupabaseAdminConfig,
   hasSupabaseConfig,
+  hasSupabasePublicConfig,
 } from "./supabase";
 import { isMissingCoachLocationColumnError, resolveCoachLocationFields } from "./location";
 import type { UserRole } from "./types";
@@ -85,6 +86,51 @@ function normalizePhoneE164(value: string) {
 
   const withCountry = trimmed.startsWith("+") ? trimmed : `+1${trimmed.replace(/^1/, "")}`;
   return /^\+[1-9]\d{7,14}$/.test(withCountry) ? withCountry : "";
+}
+
+function serializableSupabaseError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return { message: String(error) };
+  }
+
+  const record = error as Record<string, unknown>;
+  return {
+    name: typeof record.name === "string" ? record.name : undefined,
+    message: typeof record.message === "string" ? record.message : undefined,
+    status: typeof record.status === "number" || typeof record.status === "string" ? record.status : undefined,
+    code: typeof record.code === "string" ? record.code : undefined,
+    details: typeof record.details === "string" ? record.details : undefined,
+    hint: typeof record.hint === "string" ? record.hint : undefined,
+  };
+}
+
+function signupErrorCode(error: unknown) {
+  const record = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+  if (record.code === "over_email_send_rate_limit" || record.status === 429) {
+    return "signup-rate-limited";
+  }
+
+  return "signup-failed";
+}
+
+async function cleanupNewAuthUser(userId: string, reason: string) {
+  try {
+    const admin = createSupabaseAdminClient();
+    const { error } = await admin.auth.admin.deleteUser(userId);
+    if (error) {
+      console.error("[registerAccount] Failed to clean up auth user after registration failure", {
+        reason,
+        userId,
+        error: serializableSupabaseError(error),
+      });
+    }
+  } catch (error) {
+    console.error("[registerAccount] Failed to clean up auth user after registration failure", {
+      reason,
+      userId,
+      error: serializableSupabaseError(error),
+    });
+  }
 }
 
 async function registerUser({
@@ -301,8 +347,14 @@ export async function registerAccount(formData: FormData) {
     redirectAccountRegisterWithError(formData, "terms-required", next);
   }
 
-  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
-    redirectAccountRegisterWithError(formData, "missing-supabase", next);
+  if (!hasSupabasePublicConfig()) {
+    console.error("[registerAccount] Missing public Supabase config for account registration");
+    redirectAccountRegisterWithError(formData, "missing-public-supabase", next);
+  }
+
+  if (!hasSupabaseAdminConfig()) {
+    console.error("[registerAccount] Missing Supabase service role config for account registration");
+    redirectAccountRegisterWithError(formData, "missing-admin-supabase", next);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -321,19 +373,37 @@ export async function registerAccount(formData: FormData) {
   });
 
   if (error || !data.user) {
-    redirectAccountRegisterWithError(formData, "register-failed", next);
+    console.error("[registerAccount] Supabase auth signup failed", {
+      role,
+      error: serializableSupabaseError(error ?? new Error("Supabase signUp returned no user")),
+    });
+    redirectAccountRegisterWithError(formData, signupErrorCode(error), next);
   }
 
-  await ensureApplicationProfile({
-    userId: data.user.id,
-    role,
-    displayName,
-    emailVerifiedAt: data.user.email_confirmed_at ?? null,
-  });
+  const createdNewAuthUser = Boolean(data.user.identities?.length);
+
+  try {
+    await ensureApplicationProfile({
+      userId: data.user.id,
+      role,
+      displayName,
+      emailVerifiedAt: data.user.email_confirmed_at ?? null,
+    });
+  } catch (profileError) {
+    console.error("[registerAccount] Failed to create user profile", {
+      userId: data.user.id,
+      role,
+      error: serializableSupabaseError(profileError),
+    });
+    if (createdNewAuthUser) {
+      await cleanupNewAuthUser(data.user.id, "profile-create-failed");
+    }
+    redirectAccountRegisterWithError(formData, "profile-create-failed", next);
+  }
 
   const admin = createSupabaseAdminClient();
   const now = new Date().toISOString();
-  await admin.from("account_private_details").upsert(
+  const { error: privateDetailsError } = await admin.from("account_private_details").upsert(
     {
       user_id: data.user.id,
       phone_e164: phone,
@@ -343,6 +413,18 @@ export async function registerAccount(formData: FormData) {
     },
     { onConflict: "user_id" },
   );
+
+  if (privateDetailsError) {
+    console.error("[registerAccount] Failed to upsert private account details", {
+      userId: data.user.id,
+      role,
+      error: serializableSupabaseError(privateDetailsError),
+    });
+    if (createdNewAuthUser) {
+      await cleanupNewAuthUser(data.user.id, "private-details-failed");
+    }
+    redirectAccountRegisterWithError(formData, "private-details-failed", next);
+  }
 
   if (data.session && data.user.email_confirmed_at) {
     redirect(`/account/verify-phone?next=${encodeURIComponent(next)}`);

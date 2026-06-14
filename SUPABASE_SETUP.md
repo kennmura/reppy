@@ -36,6 +36,8 @@ http://127.0.0.1:3002
 Local redirect URLs:
 
 ```text
+http://127.0.0.1:3002/auth/callback
+http://localhost:3002/auth/callback
 http://127.0.0.1:3002/**
 http://localhost:3002/**
 ```
@@ -51,20 +53,21 @@ See `AUTH_SETUP.md` for the current coach and parent/player auth route map.
 Run these files in order:
 
 1. `supabase/schema.sql`
-2. `supabase/migrations/20260613_internal_messaging_push_retention.sql`
-3. `supabase/migrations/20260613_auth_onboarding_profiles.sql`
-4. `supabase/migrations/20260613_request_verification_realtime.sql`
-5. `supabase/seed.sql`
-6. `supabase/bootstrap.sql`
-7. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
+2. `supabase/migrations/20260613000100_auth_onboarding_profiles.sql`
+3. `supabase/migrations/20260613000200_coach_location_search.sql`
+4. `supabase/migrations/20260613000300_internal_messaging_push_retention.sql`
+5. `supabase/migrations/20260613000400_request_verification_realtime.sql`
+6. `supabase/migrations/20260613000500_access_saved_reviews_location_cleanup.sql`
+7. `supabase/migrations/20260613000600_registration_profile_private_details.sql`
+8. `supabase/seed.sql`
+9. `supabase/bootstrap.sql`
+10. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
 
 For an existing project that already ran the current schema, run only:
 
-1. `supabase/migrations/20260613_internal_messaging_push_retention.sql`
-2. `supabase/migrations/20260613_auth_onboarding_profiles.sql`
-3. `supabase/migrations/20260613_request_verification_realtime.sql`
-4. `supabase/bootstrap.sql`
-5. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
+1. Any `supabase/migrations/2026061300*.sql` file not already applied, in filename order.
+2. `supabase/bootstrap.sql`
+3. `supabase/bootstrap_first_coach.sql` after replacing the Auth user UUID placeholder
 
 The migration is idempotent and does not delete existing conversations, messages, coaches, applications, subscriptions, player records, or access grants.
 
@@ -104,11 +107,16 @@ The migration is idempotent and does not delete existing conversations, messages
 ```env
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SECRET_KEY=
+# SUPABASE_SERVICE_ROLE_KEY=
 
 ADMIN_EMAIL=your_email@example.com
 NEXT_PUBLIC_APP_URL=http://127.0.0.1:3002
 FOUNDING_COACH_LIMIT=5
+FOUNDING_COACH_PLAN_CODE=founding_5
+PREMIUM_COACH_PLAN_CODE=premium_15
+REPPY_ENABLE_STATIC_GEOCODING=false
 CRON_SECRET=
 
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=

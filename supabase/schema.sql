@@ -82,6 +82,7 @@ create table if not exists training_requests (
   preferred_days_times text,
   message text,
   status text default 'new',
+  client_request_id uuid,
   created_at timestamp with time zone default now()
 );
 
@@ -139,6 +140,7 @@ using (exists (select 1 from coaches where coaches.id = coach_media.coach_id and
 create index if not exists coaches_slug_idx on coaches(slug);
 create index if not exists training_requests_status_idx on training_requests(status);
 create index if not exists training_requests_created_at_idx on training_requests(created_at desc);
+create index if not exists training_requests_requester_created_idx on training_requests(requester_user_id, created_at desc);
 create index if not exists coach_applications_status_idx on coach_applications(status);
 create index if not exists coach_applications_created_at_idx on coach_applications(created_at desc);
 
@@ -168,6 +170,7 @@ alter table training_requests add column if not exists guardian_name text;
 alter table training_requests add column if not exists guardian_required boolean default false;
 alter table training_requests add column if not exists guardian_confirmed_at timestamp with time zone;
 alter table training_requests add column if not exists parent_follow_up_sent_at timestamp with time zone;
+alter table training_requests add column if not exists client_request_id uuid;
 
 create table if not exists user_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -176,7 +179,25 @@ create table if not exists user_profiles (
   email_verified_at timestamp with time zone,
   phone_verified_at timestamp with time zone,
   account_status text default 'active',
-  created_at timestamp with time zone default now()
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  constraint user_profiles_role_check check (role in ('coach', 'parent', 'adult_player', 'admin')),
+  constraint user_profiles_account_status_check check (account_status in ('active', 'pending', 'suspended', 'banned', 'deleted'))
+);
+
+create table if not exists account_private_details (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  phone_e164 text,
+  phone_verified_at timestamp with time zone,
+  account_type text,
+  otp_send_count integer not null default 0,
+  otp_verify_attempt_count integer not null default 0,
+  otp_last_sent_at timestamp with time zone,
+  otp_window_started_at timestamp with time zone,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint account_private_details_account_type_check
+    check (account_type is null or account_type in ('parent', 'adult_player'))
 );
 
 create table if not exists subscriptions (
@@ -234,6 +255,17 @@ begin
     alter table training_requests
       add constraint training_requests_conversation_fk
       foreign key (conversation_id) references conversations(id) on delete set null;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'training_requests_requester_client_request_id_key'
+  ) then
+    alter table training_requests
+      add constraint training_requests_requester_client_request_id_key
+      unique (requester_user_id, client_request_id);
   end if;
 end $$;
 
@@ -420,6 +452,7 @@ select
 from conversations;
 
 alter table user_profiles enable row level security;
+alter table account_private_details enable row level security;
 alter table subscriptions enable row level security;
 alter table conversations enable row level security;
 alter table conversation_private_details enable row level security;
@@ -450,6 +483,9 @@ create index if not exists push_subscriptions_user_idx on push_subscriptions(use
 create index if not exists player_records_coach_id_idx on player_records(coach_id);
 create index if not exists subscriptions_coach_user_id_idx on subscriptions(coach_user_id);
 create index if not exists premium_access_grants_coach_user_id_idx on premium_access_grants(coach_user_id);
+create index if not exists account_private_details_phone_idx
+  on account_private_details(phone_e164)
+  where phone_e164 is not null;
 
 create or replace function public.coach_has_message_access(target_coach_user_id uuid)
 returns boolean
@@ -479,6 +515,38 @@ as $$
       and premium_access_grants.ends_at > now()
   );
 $$;
+
+drop policy if exists "Users can read own profile" on user_profiles;
+create policy "Users can read own profile"
+on user_profiles for select
+to authenticated
+using (id = auth.uid());
+
+drop policy if exists "Users can update own profile" on user_profiles;
+create policy "Users can update own profile"
+on user_profiles for update
+to authenticated
+using (id = auth.uid())
+with check (id = auth.uid());
+
+drop policy if exists "Users can read own private account details" on account_private_details;
+create policy "Users can read own private account details"
+on account_private_details for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "Users can update own private account details" on account_private_details;
+create policy "Users can update own private account details"
+on account_private_details for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "Users can insert own private account details" on account_private_details;
+create policy "Users can insert own private account details"
+on account_private_details for insert
+to authenticated
+with check (user_id = auth.uid());
 
 drop policy if exists "Coaches can read own safe conversation metadata" on conversations;
 create policy "Coaches can read own safe conversation metadata"

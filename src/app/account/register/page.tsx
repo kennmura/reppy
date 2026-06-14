@@ -4,12 +4,18 @@ import { registerAccount } from "@/lib/authActions";
 
 const errors: Record<string, string> = {
   "missing-supabase": "Set Supabase environment variables before registering.",
+  "missing-public-supabase": "Account registration is not configured yet. Missing public Supabase settings.",
+  "missing-admin-supabase": "Account registration is not fully configured yet. Missing secure server settings.",
   "missing-fields": "Enter your name, email, and password.",
   "weak-password": "Use a password with at least 8 characters.",
   "password-mismatch": "Passwords do not match.",
   "terms-required": "Accept the terms and privacy policy to continue.",
   "privacy-required": "Accept the privacy policy to continue.",
   "invalid-phone": "Enter a valid mobile phone number.",
+  "signup-rate-limited": "Too many signup emails were requested. Please wait a few minutes and try again.",
+  "signup-failed": "The account could not be created. Try signing in or use another email.",
+  "profile-create-failed": "Registration started, but profile setup could not finish. Please try again.",
+  "private-details-failed": "Registration started, but phone setup could not finish. Please try again.",
   "register-failed": "The account could not be created. Try signing in or use another email.",
 };
 

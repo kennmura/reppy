@@ -7,8 +7,12 @@ const supabasePublishableKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-export function hasSupabaseConfig() {
+export function hasSupabasePublicConfig() {
   return Boolean(supabaseUrl && supabasePublishableKey);
+}
+
+export function hasSupabaseConfig() {
+  return hasSupabasePublicConfig();
 }
 
 export function hasSupabaseAdminConfig() {
@@ -46,7 +50,7 @@ export async function createSupabaseServerClient() {
 
 export function createSupabaseAdminClient() {
   if (!supabaseUrl || !supabaseSecretKey) {
-    throw new Error("Missing Supabase secret key environment variables.");
+    throw new Error("Missing Supabase service role or secret key environment variables.");
   }
 
   return createClient(supabaseUrl, supabaseSecretKey, {

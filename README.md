@@ -56,6 +56,19 @@ REPPY_ENABLE_STATIC_GEOCODING=false
 npm run dev -- --hostname 127.0.0.1 --port 3002
 ```
 
+For local Supabase Auth, set the Supabase Site URL to the same app URL, usually
+`http://127.0.0.1:3002`. Add both local callback URLs in Authentication -> URL
+Configuration:
+
+```text
+http://127.0.0.1:3002/auth/callback
+http://localhost:3002/auth/callback
+```
+
+Player/parent registration requires public Supabase config plus a server-only
+service role or secret key. Do not expose `SUPABASE_SECRET_KEY` or
+`SUPABASE_SERVICE_ROLE_KEY` to client-side code.
+
 ## Messaging Model
 
 - Training requests and replies stay inside Reppy.
