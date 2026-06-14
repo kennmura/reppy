@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { CoachShell } from "@/components/coach/CoachShell";
+import { StatusBadge } from "@/components/StatusBadge";
 import { TrialBanner } from "@/components/coach/TrialBanner";
 import { getCoachContextOrRedirect } from "@/lib/auth";
 import {
   getCoachAvailabilityBlocks,
-  getCoachConversations,
   getCoachProfileByOwner,
+  getCoachTrainingRequests,
   getCoachUnreadCount,
 } from "@/lib/data";
 import { getMessageAccess } from "@/lib/entitlements";
@@ -15,13 +16,13 @@ export const dynamic = "force-dynamic";
 
 export default async function CoachDashboardPage() {
   const { user, coach, coachUserId } = await getCoachContextOrRedirect();
-  const [access, unreadCount, notificationCount, conversations, profile, availabilityBlocks] = await Promise.all([
+  const [access, unreadCount, notificationCount, profile, availabilityBlocks, requests] = await Promise.all([
     getMessageAccess({ coach, coachUserId }),
     getCoachUnreadCount(coach.id, coachUserId),
     getUnreadNotificationCount(user.id),
-    getCoachConversations({ coachId: coach.id, coachUserId }),
     getCoachProfileByOwner(user.id),
     getCoachAvailabilityBlocks(coach.id),
+    getCoachTrainingRequests(coach.id),
   ]);
   const checklist = buildProfileChecklist(profile, availabilityBlocks.length);
   const onboardingComplete = checklist.every((item) => item.done);
@@ -38,7 +39,7 @@ export default async function CoachDashboardPage() {
           <Metric label="Profile completion" value={`${profile?.coach.profile_completion ?? 0}%`} />
           <Metric label="Profile status" value={coach.profile_status?.replaceAll("_", " ") ?? "draft"} />
           <Metric label="Unread requests" value={unreadCount} />
-          <Metric label="Total conversations" value={conversations.length} />
+          <Metric label="Pending coach action" value={requests.filter((request) => request.status === "pending").length} />
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
@@ -98,28 +99,29 @@ export default async function CoachDashboardPage() {
             </section>
           )}
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-950">Recent conversations</h2>
-            {conversations.length ? (
+            <h2 className="text-lg font-semibold text-slate-950">Requests needing attention</h2>
+            {requests.length ? (
               <div className="mt-4 divide-y divide-slate-200">
-                {conversations.slice(0, 5).map((conversation) => (
+                {requests.map((request) => (
                   <Link
-                    key={conversation.id}
-                    href={`/coach/messages/${conversation.id}`}
+                    key={request.id}
+                    href={request.conversation_id ? `/coach/messages/${request.conversation_id}` : "/coach/messages"}
                     className="grid gap-1 py-3 hover:text-[#12355b]"
                   >
-                    <span className="font-semibold text-slate-950">
-                      {conversation.sport || "Training request"}
+                    <span className="flex flex-wrap items-center gap-2 font-semibold text-slate-950">
+                      {request.name}
+                      <StatusBadge status={request.status} />
                     </span>
                     <span className="text-sm text-slate-600">
-                      {conversation.request_type || "Request"} -{" "}
-                      {conversation.general_location || "Area not provided"}
+                      {request.service_title || "Training request"} -{" "}
+                      {formatRequestDate(request.requested_date)}
                     </span>
                   </Link>
                 ))}
               </div>
             ) : (
               <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                New training requests and Message Center conversations will appear here.
+                New pending and payment-waiting requests will appear here.
               </p>
             )}
           </section>
@@ -127,6 +129,18 @@ export default async function CoachDashboardPage() {
       </div>
     </CoachShell>
   );
+}
+
+function formatRequestDate(value?: string | null) {
+  if (!value) {
+    return "No requested date";
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function buildProfileChecklist(

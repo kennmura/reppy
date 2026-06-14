@@ -197,6 +197,36 @@ export default async function AdminCoachEditPage({ params }: { params: Promise<{
             </div>
           </section>
 
+          <section className="grid gap-4">
+            <SectionTitle title="Payment preferences" compact />
+            <p className="text-sm leading-6 text-slate-600">
+              First sessions always require Reppy payment. These fields control future-session payment options.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Checkbox
+                name="coach_direct_preferred"
+                label="Direct preferred"
+                defaultChecked={coach.coach_direct_preferred ?? true}
+              />
+              <Checkbox
+                name="platform_payment_allowed"
+                label="Reppy payments allowed"
+                defaultChecked={coach.platform_payment_allowed ?? true}
+              />
+              <Checkbox
+                name="platform_payment_required"
+                label="Reppy payments required"
+                defaultChecked={coach.platform_payment_required ?? false}
+              />
+            </div>
+            <Field
+              label="Stripe connected account ID"
+              name="stripe_connected_account_id"
+              defaultValue={coach.stripe_connected_account_id ?? ""}
+              placeholder="acct_..."
+            />
+          </section>
+
           <div className="flex flex-wrap gap-5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
               <input type="checkbox" name="is_published" defaultChecked={coach.is_published} />
@@ -235,6 +265,23 @@ export default async function AdminCoachEditPage({ params }: { params: Promise<{
         </form>
       </div>
     </AdminLayout>
+  );
+}
+
+function Checkbox({
+  name,
+  label,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  defaultChecked: boolean;
+}) {
+  return (
+    <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">
+      <input type="checkbox" name={name} defaultChecked={defaultChecked} />
+      {label}
+    </label>
   );
 }
 

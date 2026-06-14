@@ -20,10 +20,17 @@ import {
   markAllNotificationsReadForUser,
   markNotificationReadForUser,
 } from "./notifications";
+import {
+  calculatePaymentAmounts,
+  createStripeCheckoutSession,
+  formatMoney,
+  hasStripeCheckoutConfig,
+  parsePriceToCents,
+} from "./payments";
 import { scanForPublicContactInfo } from "./profileModeration";
 import { sendPushNotificationToUser } from "./push";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "./supabase";
-import type { Coach, CoachApplication, CoachProfileStatus, TrainingRequest } from "./types";
+import type { Coach, CoachApplication, CoachProfileStatus, CoachService, TrainingRequest, TrainingRequestPayment, TrainingSession } from "./types";
 
 function textValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -300,6 +307,762 @@ export async function activateCoachTrial() {
   revalidatePath("/coach/messages");
   revalidatePath("/coach/billing");
   redirect("/coach/messages");
+}
+
+async function getTrainingRequestForCoach({
+  requestId,
+  conversationId,
+  coachId,
+}: {
+  requestId: string;
+  conversationId: string;
+  coachId: string;
+}) {
+  const supabase = createSupabaseAdminClient();
+  let query = supabase.from("training_requests").select("*").eq("coach_id", coachId);
+
+  if (requestId) {
+    query = query.eq("id", requestId);
+  } else {
+    query = query.eq("conversation_id", conversationId);
+  }
+
+  const { data, error } = await query.maybeSingle<TrainingRequest>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+async function getServicePriceCents({
+  request,
+  coach,
+}: {
+  request: TrainingRequest;
+  coach: Coach;
+}) {
+  const supabase = createSupabaseAdminClient();
+  let service: Pick<CoachService, "id" | "title" | "price"> | null = null;
+
+  if (request.service_id) {
+    const { data, error } = await supabase
+      .from("coach_services")
+      .select("id, title, price")
+      .eq("id", request.service_id)
+      .eq("coach_id", coach.id)
+      .maybeSingle<Pick<CoachService, "id" | "title" | "price">>();
+
+    if (error) {
+      throw error;
+    }
+
+    service = data;
+  }
+
+  return {
+    serviceTitle: service?.title ?? request.service_title ?? "Training session",
+    amountCents: parsePriceToCents(service?.price) ?? parsePriceToCents(coach.pricing_text),
+  };
+}
+
+async function upsertFirstTrainingSession({
+  request,
+  coach,
+  amounts,
+}: {
+  request: TrainingRequest;
+  coach: Coach;
+  amounts: ReturnType<typeof calculatePaymentAmounts>;
+}) {
+  const supabase = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+  const payload = {
+    training_request_id: request.id,
+    conversation_id: request.conversation_id ?? null,
+    coach_id: coach.id,
+    coach_user_id: coach.user_id ?? null,
+    requester_user_id: request.requester_user_id ?? null,
+    service_id: request.service_id ?? null,
+    service_title: request.service_title ?? "Training session",
+    session_kind: "first_session",
+    status: "accepted_pending_payment",
+    payment_status: "requires_payment",
+    payment_method: "platform",
+    requested_date: request.requested_date ?? null,
+    requested_start_time: request.requested_start_time ?? null,
+    requested_end_time: request.requested_end_time ?? null,
+    timezone: request.timezone ?? coach.timezone ?? "America/New_York",
+    preferred_days_times: request.preferred_days_times ?? null,
+    location: request.preferred_location ?? null,
+    gross_amount_cents: amounts.grossAmountCents,
+    platform_fee_cents: amounts.platformFeeCents,
+    coach_payout_cents: amounts.coachPayoutCents,
+    currency: "usd",
+    updated_at: now,
+  };
+
+  const { data: existing } = await supabase
+    .from("training_sessions")
+    .select("id")
+    .eq("training_request_id", request.id)
+    .eq("session_kind", "first_session")
+    .maybeSingle<{ id: string }>();
+
+  if (existing?.id) {
+    const { data, error } = await supabase
+      .from("training_sessions")
+      .update(payload)
+      .eq("id", existing.id)
+      .select("*")
+      .single<TrainingSession>();
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  }
+
+  const { data, error } = await supabase
+    .from("training_sessions")
+    .insert({ ...payload, created_at: now })
+    .select("*")
+    .single<TrainingSession>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+async function upsertFirstTrainingPayment({
+  request,
+  coach,
+  session,
+  amounts,
+}: {
+  request: TrainingRequest;
+  coach: Coach;
+  session: TrainingSession;
+  amounts: ReturnType<typeof calculatePaymentAmounts>;
+}) {
+  const supabase = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+  const payload = {
+    training_request_id: request.id,
+    training_session_id: session.id,
+    conversation_id: request.conversation_id ?? null,
+    coach_id: coach.id,
+    coach_user_id: coach.user_id ?? null,
+    requester_user_id: request.requester_user_id ?? null,
+    service_id: request.service_id ?? null,
+    service_title: request.service_title ?? "Training session",
+    session_kind: "first_session",
+    payment_method: "platform",
+    status: "requires_payment",
+    gross_amount_cents: amounts.grossAmountCents,
+    platform_fee_cents: amounts.platformFeeCents,
+    coach_payout_cents: amounts.coachPayoutCents,
+    currency: "usd",
+    requested_date: request.requested_date ?? null,
+    requested_start_time: request.requested_start_time ?? null,
+    requested_end_time: request.requested_end_time ?? null,
+    timezone: request.timezone ?? coach.timezone ?? "America/New_York",
+    updated_at: now,
+  };
+
+  const { data: existing } = await supabase
+    .from("training_request_payments")
+    .select("id, status")
+    .eq("training_request_id", request.id)
+    .eq("session_kind", "first_session")
+    .maybeSingle<Pick<TrainingRequestPayment, "id" | "status">>();
+
+  if (existing?.id) {
+    const { data, error } = await supabase
+      .from("training_request_payments")
+      .update(existing.status === "paid" ? { training_session_id: session.id, updated_at: now } : payload)
+      .eq("id", existing.id)
+      .select("*")
+      .single<TrainingRequestPayment>();
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  }
+
+  const { data, error } = await supabase
+    .from("training_request_payments")
+    .insert({ ...payload, created_at: now })
+    .select("*")
+    .single<TrainingRequestPayment>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+async function addSystemMessage({
+  conversationId,
+  body,
+}: {
+  conversationId: string | null | undefined;
+  body: string;
+}) {
+  if (!conversationId) {
+    return;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const retentionExpiresAt = new Date(nowDate.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  await supabase.from("messages").insert({
+    conversation_id: conversationId,
+    sender_user_id: null,
+    sender_role: "system",
+    body,
+  });
+
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: now, retention_expires_at: retentionExpiresAt, updated_at: now })
+    .eq("id", conversationId);
+}
+
+async function notifyConversationUsers({
+  conversationId,
+  actorUserId,
+  type,
+  title,
+  body,
+  actionUrl,
+}: {
+  conversationId: string | null | undefined;
+  actorUserId?: string | null;
+  type: Parameters<typeof createNotification>[0]["type"];
+  title: string;
+  body: string;
+  actionUrl: string;
+}) {
+  if (!conversationId) {
+    return;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: participants } = await supabase
+    .from("conversation_participants")
+    .select("user_id")
+    .eq("conversation_id", conversationId)
+    .neq("user_id", actorUserId ?? "00000000-0000-0000-0000-000000000000");
+
+  for (const participant of participants ?? []) {
+    if (!participant.user_id) {
+      continue;
+    }
+
+    await supabase.rpc("increment_participant_unread", {
+      target_conversation_id: conversationId,
+      target_user_id: participant.user_id,
+    });
+
+    await createNotification({
+      userId: participant.user_id,
+      type,
+      title,
+      body,
+      relatedConversationId: conversationId,
+      actionUrl,
+    });
+
+    await sendPushNotificationToUser(participant.user_id, {
+      title,
+      body,
+      url: actionUrl,
+      tag: `conversation-${conversationId}`,
+    });
+  }
+}
+
+export async function acceptTrainingRequest(formData: FormData) {
+  const { coach, user } = await getCoachContextOrRedirect();
+  const requestId = textValue(formData, "request_id");
+  const conversationId = textValue(formData, "conversation_id");
+  const returnPath = conversationId ? `/coach/messages/${conversationId}` : "/coach/messages";
+  const request = await getTrainingRequestForCoach({ requestId, conversationId, coachId: coach.id });
+
+  if (!request?.id || !request.conversation_id) {
+    redirect(`${returnPath}?request_error=not-found`);
+  }
+
+  if (request.status !== "pending") {
+    redirect(`${returnPath}?request_error=not-pending`);
+  }
+
+  const { serviceTitle, amountCents } = await getServicePriceCents({ request, coach });
+  if (!amountCents) {
+    redirect(`${returnPath}?request_error=missing-price`);
+  }
+
+  const amounts = calculatePaymentAmounts(amountCents);
+  const now = new Date().toISOString();
+  const supabase = createSupabaseAdminClient();
+  const session = await upsertFirstTrainingSession({
+    request: { ...request, service_title: serviceTitle },
+    coach,
+    amounts,
+  });
+  await upsertFirstTrainingPayment({
+    request: { ...request, service_title: serviceTitle },
+    coach,
+    session,
+    amounts,
+  });
+
+  const { error } = await supabase
+    .from("training_requests")
+    .update({
+      status: "accepted_pending_payment",
+      payment_status: "requires_payment",
+      payment_method: "platform",
+      service_title: serviceTitle,
+      gross_amount_cents: amounts.grossAmountCents,
+      platform_fee_cents: amounts.platformFeeCents,
+      coach_payout_cents: amounts.coachPayoutCents,
+      currency: "usd",
+      accepted_at: now,
+      updated_at: now,
+    })
+    .eq("id", request.id)
+    .eq("coach_id", coach.id)
+    .eq("status", "pending");
+
+  if (error) {
+    throw error;
+  }
+
+  await supabase
+    .from("conversations")
+    .update({ status: "replied", is_unread_by_coach: false, updated_at: now })
+    .eq("id", request.conversation_id)
+    .eq("coach_id", coach.id);
+
+  await addSystemMessage({
+    conversationId: request.conversation_id,
+    body: [
+      `${coach.full_name} accepted this training request.`,
+      `First session payment is required through Reppy to confirm your booking.`,
+      `Service: ${serviceTitle}`,
+      `Session price: ${formatMoney(amounts.grossAmountCents)}`,
+    ].join("\n"),
+  });
+  await notifyConversationUsers({
+    conversationId: request.conversation_id,
+    actorUserId: user.id,
+    type: "payment_required",
+    title: "Training request accepted",
+    body: "First session payment is required through Reppy to confirm your booking.",
+    actionUrl: `/account/messages/${request.conversation_id}`,
+  });
+
+  revalidatePath("/coach/dashboard");
+  revalidatePath("/coach/messages");
+  revalidatePath(`/coach/messages/${request.conversation_id}`);
+  redirect(`${returnPath}?request=accepted`);
+}
+
+export async function declineTrainingRequest(formData: FormData) {
+  const { coach, user } = await getCoachContextOrRedirect();
+  const requestId = textValue(formData, "request_id");
+  const conversationId = textValue(formData, "conversation_id");
+  const reason = textValue(formData, "decline_reason");
+  const returnPath = conversationId ? `/coach/messages/${conversationId}` : "/coach/messages";
+  const request = await getTrainingRequestForCoach({ requestId, conversationId, coachId: coach.id });
+
+  if (!request?.id || !request.conversation_id) {
+    redirect(`${returnPath}?request_error=not-found`);
+  }
+
+  if (!["pending", "accepted_pending_payment"].includes(request.status)) {
+    redirect(`${returnPath}?request_error=not-actionable`);
+  }
+
+  const now = new Date().toISOString();
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("training_requests")
+    .update({
+      status: "declined",
+      payment_status: "not_required",
+      declined_at: now,
+      updated_at: now,
+    })
+    .eq("id", request.id)
+    .eq("coach_id", coach.id);
+
+  if (error) {
+    throw error;
+  }
+
+  await supabase
+    .from("training_sessions")
+    .update({ status: "declined", payment_status: "not_required", updated_at: now })
+    .eq("training_request_id", request.id)
+    .neq("status", "paid_confirmed");
+
+  await supabase
+    .from("conversations")
+    .update({ status: "declined", is_unread_by_coach: false, updated_at: now })
+    .eq("id", request.conversation_id)
+    .eq("coach_id", coach.id);
+
+  await addSystemMessage({
+    conversationId: request.conversation_id,
+    body: [`${coach.full_name} declined this training request.`, reason ? `Note: ${reason}` : ""]
+      .filter(Boolean)
+      .join("\n"),
+  });
+  await notifyConversationUsers({
+    conversationId: request.conversation_id,
+    actorUserId: user.id,
+    type: "request_declined",
+    title: "Training request declined",
+    body: reason || "The coach declined this request. You can message them or find another coach.",
+    actionUrl: `/account/messages/${request.conversation_id}`,
+  });
+
+  revalidatePath("/coach/dashboard");
+  revalidatePath("/coach/messages");
+  revalidatePath(`/coach/messages/${request.conversation_id}`);
+  redirect(`${returnPath}?request=declined`);
+}
+
+export async function createTrainingPaymentCheckout(formData: FormData) {
+  const user = await getAccountUserOrRedirect();
+  const paymentId = textValue(formData, "payment_id");
+  const conversationId = textValue(formData, "conversation_id");
+  const returnPath = conversationId ? `/account/messages/${conversationId}` : "/account/messages";
+
+  if (!paymentId) {
+    redirect(`${returnPath}?payment_error=missing-payment`);
+  }
+
+  if (!hasStripeCheckoutConfig()) {
+    redirect(`${returnPath}?payment_error=missing-stripe-config`);
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: payment, error: paymentError } = await supabase
+    .from("training_request_payments")
+    .select("*")
+    .eq("id", paymentId)
+    .eq("requester_user_id", user.id)
+    .maybeSingle<TrainingRequestPayment>();
+
+  if (paymentError) {
+    throw paymentError;
+  }
+
+  if (!payment) {
+    redirect(`${returnPath}?payment_error=not-found`);
+  }
+
+  if (payment.status === "paid") {
+    redirect(`${returnPath}?payment=already-paid`);
+  }
+
+  if (payment.payment_method !== "platform") {
+    redirect(`${returnPath}?payment_error=not-platform`);
+  }
+
+  if (payment.status === "checkout_created" && payment.checkout_url) {
+    redirect(payment.checkout_url);
+  }
+
+  const { data: coach } = await supabase
+    .from("coaches")
+    .select("full_name, stripe_connected_account_id")
+    .eq("id", payment.coach_id)
+    .maybeSingle<Pick<Coach, "full_name" | "stripe_connected_account_id">>();
+
+  let checkoutUrl = "";
+  try {
+    const session = await createStripeCheckoutSession({
+      paymentId: payment.id,
+      trainingRequestId: payment.training_request_id,
+      trainingSessionId: payment.training_session_id,
+      conversationId: payment.conversation_id,
+      requesterUserId: payment.requester_user_id,
+      requesterEmail: user.email ?? null,
+      coachName: coach?.full_name ?? "Coach",
+      serviceTitle: payment.service_title ?? "Training session",
+      amountCents: payment.gross_amount_cents,
+      platformFeeCents: payment.platform_fee_cents,
+      currency: payment.currency,
+      connectedAccountId: coach?.stripe_connected_account_id ?? null,
+    });
+
+    const now = new Date().toISOString();
+    await supabase
+      .from("training_request_payments")
+      .update({
+        status: "checkout_created",
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id: session.paymentIntentId,
+        checkout_url: session.url,
+        updated_at: now,
+      })
+      .eq("id", payment.id);
+
+    if (payment.training_request_id) {
+      await supabase
+        .from("training_requests")
+        .update({
+          payment_status: "checkout_created",
+          stripe_checkout_session_id: session.id,
+          stripe_payment_intent_id: session.paymentIntentId,
+          updated_at: now,
+        })
+        .eq("id", payment.training_request_id)
+        .eq("requester_user_id", user.id);
+    }
+
+    if (payment.training_session_id) {
+      await supabase
+        .from("training_sessions")
+        .update({ payment_status: "checkout_created", updated_at: now })
+        .eq("id", payment.training_session_id)
+        .eq("requester_user_id", user.id);
+    }
+
+    checkoutUrl = session.url;
+  } catch (error) {
+    console.error("[payments] Stripe checkout creation failed", {
+      paymentId: payment.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    redirect(`${returnPath}?payment_error=checkout-failed`);
+  }
+
+  redirect(checkoutUrl);
+}
+
+export async function requestFutureTrainingSession(formData: FormData) {
+  const user = await getAccountUserOrRedirect();
+  const conversationId = textValue(formData, "conversation_id");
+  const requestId = textValue(formData, "request_id");
+  const requestedDate = textValue(formData, "requested_date");
+  const requestedStartTime = textValue(formData, "requested_start_time");
+  const requestedEndTime = textValue(formData, "requested_end_time");
+  const preferredDaysTimes = textValue(formData, "preferred_days_times");
+  const location = textValue(formData, "location");
+  const notes = textValue(formData, "notes");
+  const returnPath = conversationId ? `/account/messages/${conversationId}` : "/account/messages";
+  const supabase = createSupabaseAdminClient();
+
+  const { data: request, error: requestError } = await supabase
+    .from("training_requests")
+    .select("*")
+    .eq("id", requestId)
+    .eq("requester_user_id", user.id)
+    .maybeSingle<TrainingRequest>();
+
+  if (requestError) {
+    throw requestError;
+  }
+
+  if (!request || !["paid_confirmed", "completed"].includes(request.status)) {
+    redirect(`${returnPath}?session_error=first-session-required`);
+  }
+
+  const { data: coach, error: coachError } = await supabase
+    .from("coaches")
+    .select("*")
+    .eq("id", request.coach_id)
+    .maybeSingle<Coach>();
+
+  if (coachError) {
+    throw coachError;
+  }
+
+  if (!coach) {
+    redirect(`${returnPath}?session_error=coach-not-found`);
+  }
+
+  const requestedMethod = textValue(formData, "payment_method");
+  const platformRequired = coach.platform_payment_required === true;
+  const platformAllowed = coach.platform_payment_allowed !== false;
+  const paymentMethod = platformRequired ? "platform" : requestedMethod === "platform" && platformAllowed ? "platform" : "coach_direct";
+  const { serviceTitle, amountCents } = await getServicePriceCents({ request, coach });
+
+  if (!amountCents) {
+    redirect(`${returnPath}?session_error=missing-price`);
+  }
+
+  const amounts = paymentMethod === "platform"
+    ? calculatePaymentAmounts(amountCents)
+    : { grossAmountCents: amountCents, platformFeeCents: 0, coachPayoutCents: amountCents };
+  const now = new Date().toISOString();
+  const paymentStatus = paymentMethod === "platform" ? "requires_payment" : "coach_direct_pending";
+  const sessionStatus = paymentMethod === "platform" ? "accepted_pending_payment" : "direct_payment_pending";
+  const { data: session, error: sessionError } = await supabase
+    .from("training_sessions")
+    .insert({
+      training_request_id: request.id,
+      conversation_id: request.conversation_id,
+      coach_id: coach.id,
+      coach_user_id: coach.user_id,
+      requester_user_id: user.id,
+      service_id: request.service_id ?? null,
+      service_title: serviceTitle,
+      session_kind: "future_session",
+      status: sessionStatus,
+      payment_status: paymentStatus,
+      payment_method: paymentMethod,
+      requested_date: requestedDate || null,
+      requested_start_time: requestedStartTime || null,
+      requested_end_time: requestedEndTime || null,
+      timezone: request.timezone ?? coach.timezone ?? "America/New_York",
+      preferred_days_times: preferredDaysTimes || null,
+      location: location || request.preferred_location || null,
+      notes: notes || null,
+      gross_amount_cents: amounts.grossAmountCents,
+      platform_fee_cents: amounts.platformFeeCents,
+      coach_payout_cents: amounts.coachPayoutCents,
+      currency: "usd",
+      created_at: now,
+      updated_at: now,
+    })
+    .select("*")
+    .single<TrainingSession>();
+
+  if (sessionError) {
+    throw sessionError;
+  }
+
+  const { error: paymentError } = await supabase.from("training_request_payments").insert({
+    training_request_id: request.id,
+    training_session_id: session.id,
+    conversation_id: request.conversation_id,
+    coach_id: coach.id,
+    coach_user_id: coach.user_id,
+    requester_user_id: user.id,
+    service_id: request.service_id ?? null,
+    service_title: serviceTitle,
+    session_kind: "future_session",
+    payment_method: paymentMethod,
+    status: paymentStatus,
+    gross_amount_cents: amounts.grossAmountCents,
+    platform_fee_cents: amounts.platformFeeCents,
+    coach_payout_cents: amounts.coachPayoutCents,
+    currency: "usd",
+    requested_date: requestedDate || null,
+    requested_start_time: requestedStartTime || null,
+    requested_end_time: requestedEndTime || null,
+    timezone: request.timezone ?? coach.timezone ?? "America/New_York",
+    metadata: { source: "future_session_request" },
+    created_at: now,
+    updated_at: now,
+  });
+
+  if (paymentError) {
+    throw paymentError;
+  }
+
+  await addSystemMessage({
+    conversationId: request.conversation_id,
+    body: [
+      "A future session was requested.",
+      `Service: ${serviceTitle}`,
+      requestedDate ? `Requested date: ${requestedDate}` : "",
+      requestedStartTime ? `Requested time: ${requestedStartTime}${requestedEndTime ? ` to ${requestedEndTime}` : ""}` : "",
+      `Payment option: ${paymentMethod === "platform" ? "Pay through Reppy" : "Pay coach directly"}`,
+      paymentMethod === "platform" ? "Reppy payment is required before this session is confirmed." : "The coach can mark direct payment received after collecting payment.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  });
+  await notifyConversationUsers({
+    conversationId: request.conversation_id,
+    actorUserId: user.id,
+    type: paymentMethod === "platform" ? "future_session_requested" : "direct_payment_selected",
+    title: "Future session requested",
+    body: paymentMethod === "platform" ? "A future session is waiting for Reppy payment." : "A future session was requested with direct coach payment.",
+    actionUrl: `/coach/messages/${request.conversation_id}`,
+  });
+
+  revalidatePath("/account/dashboard");
+  revalidatePath("/account/messages");
+  revalidatePath(returnPath);
+  redirect(`${returnPath}?session=requested`);
+}
+
+export async function markDirectPaymentReceived(formData: FormData) {
+  const { coach, user } = await getCoachContextOrRedirect();
+  const paymentId = textValue(formData, "payment_id");
+  const conversationId = textValue(formData, "conversation_id");
+  const returnPath = conversationId ? `/coach/messages/${conversationId}` : "/coach/messages";
+
+  if (!paymentId) {
+    redirect(`${returnPath}?payment_error=missing-payment`);
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: payment, error } = await supabase
+    .from("training_request_payments")
+    .select("*")
+    .eq("id", paymentId)
+    .eq("coach_id", coach.id)
+    .eq("payment_method", "coach_direct")
+    .maybeSingle<TrainingRequestPayment>();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!payment || payment.status !== "coach_direct_pending") {
+    redirect(`${returnPath}?payment_error=not-actionable`);
+  }
+
+  const now = new Date().toISOString();
+  await supabase
+    .from("training_request_payments")
+    .update({ status: "coach_marked_paid", paid_at: now, updated_at: now })
+    .eq("id", payment.id)
+    .eq("coach_id", coach.id);
+
+  if (payment.training_session_id) {
+    await supabase
+      .from("training_sessions")
+      .update({ status: "confirmed", payment_status: "coach_marked_paid", paid_at: now, updated_at: now })
+      .eq("id", payment.training_session_id)
+      .eq("coach_id", coach.id);
+  }
+
+  await addSystemMessage({
+    conversationId: payment.conversation_id,
+    body: `${coach.full_name} marked direct payment received for ${payment.service_title ?? "a future session"}.`,
+  });
+  await notifyConversationUsers({
+    conversationId: payment.conversation_id,
+    actorUserId: user.id,
+    type: "direct_payment_received",
+    title: "Direct payment marked received",
+    body: "Your coach marked direct payment received for the session.",
+    actionUrl: `/account/messages/${payment.conversation_id}`,
+  });
+
+  revalidatePath("/coach/messages");
+  revalidatePath(returnPath);
+  redirect(`${returnPath}?payment=direct-received`);
 }
 
 export async function updateConversationStatus(formData: FormData) {
@@ -870,6 +1633,10 @@ export async function saveCoachProfile(formData: FormData) {
     video_url: textValue(formData, "video_url") || null,
     booking_url: textValue(formData, "booking_url") || null,
     accepting_requests: formData.get("accepting_requests") === "on",
+    coach_direct_preferred: formData.get("coach_direct_preferred") === "on",
+    platform_payment_allowed:
+      formData.get("platform_payment_required") === "on" || formData.get("platform_payment_allowed") === "on",
+    platform_payment_required: formData.get("platform_payment_required") === "on",
     profile_status: nextStatus,
     is_published: currentStatus === "published" && intent !== "submit" ? coach.is_published : false,
     contact_scan_status: hasContactInfo ? "flagged" : "clear",
@@ -1294,7 +2061,18 @@ export async function updateRequestStatus(formData: FormData) {
   const id = textValue(formData, "id");
   const status = textValue(formData, "status") as TrainingRequest["status"];
 
-  if (!id || !["pending", "accepted", "declined", "cancelled", "completed", "new", "contacted", "scheduled", "closed"].includes(status)) {
+  if (
+    !id ||
+    ![
+      "pending",
+      "accepted_pending_payment",
+      "paid_confirmed",
+      "declined",
+      "cancelled",
+      "completed",
+      "refunded",
+    ].includes(status)
+  ) {
     throw new Error("Invalid request status update.");
   }
 
@@ -1486,6 +2264,11 @@ export async function updateCoach(formData: FormData) {
       is_published: formData.get("is_published") === "on",
       is_featured: formData.get("is_featured") === "on",
       accepting_requests: formData.get("accepting_requests") === "on",
+      coach_direct_preferred: formData.get("coach_direct_preferred") === "on",
+      platform_payment_allowed:
+        formData.get("platform_payment_required") === "on" || formData.get("platform_payment_allowed") === "on",
+      platform_payment_required: formData.get("platform_payment_required") === "on",
+      stripe_connected_account_id: textValue(formData, "stripe_connected_account_id") || null,
       founding_price_locked: formData.get("founding_price_locked") === "on",
       contact_scan_status: hasContactInfo ? "flagged" : "clear",
       admin_premium_access_until: textValue(formData, "admin_premium_access_until") || null,

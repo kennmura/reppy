@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { StatusBadge } from "@/components/StatusBadge";
 import { deleteCoachAvailabilityBlock, saveCoachAvailabilityBlock } from "@/lib/actions";
 import type { CoachAvailabilityBlock, TrainingRequest } from "@/lib/types";
 
@@ -243,7 +244,9 @@ export function CoachAvailabilityCalendar({
                     href={request.conversation_id ? `/coach/messages/${request.conversation_id}` : "/coach/messages"}
                     className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 hover:border-amber-300"
                   >
-                    <span className="block font-semibold capitalize">{request.status} request</span>
+                    <span className="flex items-center gap-2 font-semibold">
+                      <StatusBadge status={request.status} />
+                    </span>
                     <span className="mt-1 block">
                       {request.name} - {request.service_title || "General training request"}
                     </span>
@@ -251,6 +254,9 @@ export function CoachAvailabilityCalendar({
                       {request.requested_start_time
                         ? `${formatTimeLabel(request.requested_start_time)} to ${formatTimeLabel(request.requested_end_time ?? "")}`
                         : "Preferred time in request"}
+                    </span>
+                    <span className="mt-1 block capitalize">
+                      Payment: {(request.payment_status ?? "not_required").replaceAll("_", " ")}
                     </span>
                   </a>
                 ))}

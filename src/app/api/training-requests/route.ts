@@ -376,7 +376,7 @@ export async function POST(request: Request) {
       .select("id")
       .eq("requester_user_id", authData.user.id)
       .eq("coach_id", requestedCoach.id)
-      .in("status", ["pending", "accepted", "new", "contacted", "scheduled"])
+      .in("status", ["pending", "accepted_pending_payment", "paid_confirmed"])
       .gt("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .limit(1);
 

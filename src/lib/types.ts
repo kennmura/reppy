@@ -49,6 +49,10 @@ export type Coach = {
   founding_price_locked?: boolean | null;
   contact_scan_status?: string | null;
   admin_premium_access_until?: string | null;
+  coach_direct_preferred?: boolean | null;
+  platform_payment_allowed?: boolean | null;
+  platform_payment_required?: boolean | null;
+  stripe_connected_account_id?: string | null;
   referral_code?: string | null;
   subscription_status: string | null;
   created_at: string;
@@ -177,6 +181,9 @@ export type TrainingRequest = {
   id: string;
   coach_id: string | null;
   coach_slug: string | null;
+  requester_user_id?: string | null;
+  guardian_user_id?: string | null;
+  client_request_id?: string | null;
   service_id?: string | null;
   service_title?: string | null;
   service_description?: string | null;
@@ -190,7 +197,19 @@ export type TrainingRequest = {
   preferred_location: string | null;
   preferred_days_times: string | null;
   message: string | null;
-  status: "pending" | "accepted" | "declined" | "cancelled" | "completed" | "new" | "contacted" | "scheduled" | "closed";
+  status: TrainingRequestStatus;
+  payment_status?: TrainingPaymentStatus | null;
+  payment_method?: "platform" | "coach_direct" | null;
+  gross_amount_cents?: number | null;
+  platform_fee_cents?: number | null;
+  coach_payout_cents?: number | null;
+  currency?: string | null;
+  stripe_checkout_session_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  accepted_at?: string | null;
+  declined_at?: string | null;
+  paid_confirmed_at?: string | null;
+  refunded_at?: string | null;
   conversation_id?: string | null;
   selected_availability_block_id?: string | null;
   requested_date?: string | null;
@@ -204,6 +223,107 @@ export type TrainingRequest = {
   parent_follow_up_sent_at?: string | null;
   created_at: string;
   updated_at?: string | null;
+};
+
+export type TrainingRequestStatus =
+  | "pending"
+  | "accepted_pending_payment"
+  | "paid_confirmed"
+  | "declined"
+  | "cancelled"
+  | "completed"
+  | "refunded";
+
+export type TrainingPaymentStatus =
+  | "not_required"
+  | "requires_payment"
+  | "checkout_created"
+  | "paid"
+  | "coach_direct_pending"
+  | "coach_marked_paid"
+  | "failed"
+  | "expired"
+  | "refunded";
+
+export type TrainingSession = {
+  id: string;
+  training_request_id: string | null;
+  conversation_id: string | null;
+  coach_id: string | null;
+  coach_user_id: string | null;
+  requester_user_id: string | null;
+  service_id: string | null;
+  service_title: string | null;
+  session_kind: "first_session" | "future_session";
+  status:
+    | "requested"
+    | "accepted_pending_payment"
+    | "paid_confirmed"
+    | "direct_payment_pending"
+    | "confirmed"
+    | "declined"
+    | "cancelled"
+    | "completed"
+    | "refunded";
+  payment_status: TrainingPaymentStatus;
+  payment_method: "platform" | "coach_direct" | null;
+  requested_date: string | null;
+  requested_start_time: string | null;
+  requested_end_time: string | null;
+  timezone: string | null;
+  preferred_days_times: string | null;
+  location: string | null;
+  notes: string | null;
+  gross_amount_cents: number | null;
+  platform_fee_cents: number | null;
+  coach_payout_cents: number | null;
+  currency: string;
+  paid_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TrainingRequestPayment = {
+  id: string;
+  training_request_id: string | null;
+  training_session_id: string | null;
+  conversation_id: string | null;
+  coach_id: string | null;
+  coach_user_id: string | null;
+  requester_user_id: string | null;
+  service_id: string | null;
+  service_title: string | null;
+  session_kind: "first_session" | "future_session";
+  payment_method: "platform" | "coach_direct";
+  status: Exclude<TrainingPaymentStatus, "not_required">;
+  gross_amount_cents: number;
+  platform_fee_cents: number;
+  coach_payout_cents: number;
+  currency: string;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_payment_status: string | null;
+  checkout_url: string | null;
+  requested_date: string | null;
+  requested_start_time: string | null;
+  requested_end_time: string | null;
+  timezone: string | null;
+  metadata: Record<string, unknown>;
+  paid_at: string | null;
+  failed_at: string | null;
+  expired_at: string | null;
+  refunded_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TrainingRequestBundle = {
+  request: TrainingRequest | null;
+  coach: Coach | null;
+  payments: TrainingRequestPayment[];
+  sessions: TrainingSession[];
 };
 
 export type CoachApplication = {
@@ -351,6 +471,13 @@ export type NotificationType =
   | "new_training_request"
   | "new_message"
   | "coach_replied"
+  | "request_accepted"
+  | "request_declined"
+  | "payment_required"
+  | "payment_completed"
+  | "future_session_requested"
+  | "direct_payment_selected"
+  | "direct_payment_received"
   | "profile_approved"
   | "profile_changes_requested"
   | "request_unanswered"

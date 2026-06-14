@@ -176,6 +176,30 @@ export function CoachProfileEditor({
         </div>
       </section>
 
+      <section id="payments" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-950">Payment preferences</h2>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          First sessions are always paid through Reppy after you accept. These settings control second and future sessions.
+        </p>
+        <div className="mt-5 grid gap-3">
+          <CheckboxField
+            name="coach_direct_preferred"
+            defaultChecked={coach?.coach_direct_preferred ?? true}
+            label="Prefer direct/cash payment for future sessions"
+          />
+          <CheckboxField
+            name="platform_payment_allowed"
+            defaultChecked={coach?.platform_payment_allowed ?? true}
+            label="Allow parents/players to pay future sessions through Reppy"
+          />
+          <CheckboxField
+            name="platform_payment_required"
+            defaultChecked={coach?.platform_payment_required ?? false}
+            label="Require future sessions to be paid through Reppy"
+          />
+        </div>
+      </section>
+
       <section id="credentials" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">Credentials</h2>
         <p className="mt-1 text-sm text-slate-600">Licenses, teams, certifications, awards, or playing milestones.</p>
@@ -286,6 +310,23 @@ function FileField({ label, name }: { label: string; name: string }) {
         accept="image/jpeg,image/png,image/webp"
         className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none file:mr-3 file:rounded-md file:border-0 file:bg-[#12355b] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-[#12355b] focus:ring-2 focus:ring-[#12355b]/15"
       />
+    </label>
+  );
+}
+
+function CheckboxField({
+  name,
+  label,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  defaultChecked: boolean;
+}) {
+  return (
+    <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+      <input name={name} type="checkbox" defaultChecked={defaultChecked} className="mt-1" />
+      <span>{label}</span>
     </label>
   );
 }

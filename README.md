@@ -46,6 +46,12 @@ ALERT_EMAIL_FROM=Reppy <notifications@yourdomain.com>
 FOUNDING_COACH_PLAN_CODE=founding_5
 PREMIUM_COACH_PLAN_CODE=premium_15
 REPPY_DISABLE_PHONE_VERIFICATION=true
+
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+REPPY_PLATFORM_FEE_BPS=500
+STRIPE_CONNECT_CLIENT_ID=
 ```
 
 4. Follow `SUPABASE_SETUP.md`.
@@ -91,6 +97,17 @@ club/team, goals, and preferred times on every coach request.
 - The only custom platform email is one safe locked-request alert for a free coach when a new request arrives.
 - Supabase Auth handles authentication emails.
 - Unsaved conversations expire 90 days after the most recent activity.
+
+## Training Request Payments
+
+- Parents/players submit requests from coach profiles.
+- Coaches accept or decline requests from the coach Message Center.
+- First sessions require Reppy payment after coach acceptance.
+- The app creates Stripe Checkout server-side only; the browser never chooses the amount.
+- Stripe webhook confirmation at `/api/stripe/webhook` is required before a first session becomes `paid_confirmed`.
+- `REPPY_PLATFORM_FEE_BPS=500` records a 5% platform fee for Reppy platform payments.
+- Future sessions can use direct coach payment or Reppy payment depending on coach preferences.
+- Configure Stripe webhook delivery for local or deployed testing and set `STRIPE_WEBHOOK_SECRET` in `.env.local`.
 
 ## Coach Discovery
 
@@ -176,6 +193,7 @@ Admin:
 API:
 
 - `/api/training-requests`
+- `/api/stripe/webhook`
 - `/api/push/subscribe`
 - `/api/push/unsubscribe`
 - `/api/push/test`

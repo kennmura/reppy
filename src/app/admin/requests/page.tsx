@@ -1,11 +1,9 @@
 import { AdminLayout } from "@/components/AdminLayout";
 import { StatusBadge } from "@/components/StatusBadge";
-import { deleteTrainingRequest, updateRequestStatus } from "@/lib/actions";
+import { deleteTrainingRequest } from "@/lib/actions";
 import { getAdminUserOrRedirect } from "@/lib/auth";
 import { getAdminTrainingRequests } from "@/lib/data";
 import type { TrainingRequest } from "@/lib/types";
-
-const statuses: TrainingRequest["status"][] = ["pending", "accepted", "declined", "cancelled", "completed"];
 
 export default async function AdminRequestsPage() {
   await getAdminUserOrRedirect();
@@ -14,8 +12,10 @@ export default async function AdminRequestsPage() {
   return (
     <AdminLayout>
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Training requests</h1>
-        <p className="mt-2 text-slate-600">Private inquiries are visible only in admin.</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Training request oversight</h1>
+        <p className="mt-2 text-slate-600">
+          Support visibility for requests, payments, and booking state. Coaches accept or decline requests from their Message Center.
+        </p>
         <div className="mt-6 space-y-4">
           {requests.length ? (
             requests.map((request) => <RequestPanel key={request.id} request={request} />)
@@ -50,29 +50,23 @@ function RequestPanel({ request }: { request: TrainingRequest }) {
         <Detail label="Player age" value={request.player_age_at_request?.toString() ?? request.player_age} />
         <Detail label="Requested time" value={formatRequestedTime(request)} />
         <Detail label="Current level/team" value={request.current_level} />
+        <Detail label="Selected service" value={request.service_title ?? null} />
         <Detail label="Preferred location" value={request.preferred_location} />
         <Detail label="Preferred days/times" value={request.preferred_days_times} />
+        <Detail label="Payment method" value={paymentMethodLabel(request.payment_method) ?? null} />
+        <Detail label="Payment status" value={paymentStatusLabel(request.payment_status) ?? null} />
+        <Detail label="Gross amount cents" value={request.gross_amount_cents?.toString() ?? null} />
+        <Detail label="Platform fee cents" value={request.platform_fee_cents?.toString() ?? null} />
         <Detail label="Training goals" value={request.training_goals} wide />
         <Detail label="Message" value={request.message} wide />
       </dl>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-        <form action={updateRequestStatus} className="flex gap-2">
-          <input type="hidden" name="id" value={request.id} />
-          <select
-            name="status"
-            defaultValue={request.status}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          >
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-          <button className="rounded-md bg-[#12355b] px-3 py-2 text-sm font-semibold text-white">
-            Update
-          </button>
-        </form>
+        <a
+          href={request.conversation_id ? `/admin/conversations` : "/admin/requests"}
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-slate-500"
+        >
+          Support review
+        </a>
         <form action={deleteTrainingRequest}>
           <input type="hidden" name="id" value={request.id} />
           <button className="rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">
@@ -82,6 +76,22 @@ function RequestPanel({ request }: { request: TrainingRequest }) {
       </div>
     </article>
   );
+}
+
+function paymentStatusLabel(status: TrainingRequest["payment_status"]) {
+  return status?.replaceAll("_", " ") ?? "not required";
+}
+
+function paymentMethodLabel(method: TrainingRequest["payment_method"]) {
+  if (method === "platform") {
+    return "Pay through Reppy";
+  }
+
+  if (method === "coach_direct") {
+    return "Pay coach directly";
+  }
+
+  return "Not selected";
 }
 
 function Detail({ label, value, wide = false }: { label: string; value: string | null; wide?: boolean }) {

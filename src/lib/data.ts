@@ -30,6 +30,9 @@ import type {
   PlayerRecord,
   SavedCoach,
   TrainingRequest,
+  TrainingRequestBundle,
+  TrainingRequestPayment,
+  TrainingSession,
   UserCoachingPreference,
   UserProfile,
 } from "./types";
@@ -47,6 +50,11 @@ function isMissingAvailabilityTableError(error: { code?: string; message?: strin
 function isMissingColumnError(error: { code?: string; message?: string; details?: string }) {
   const text = `${error.message ?? ""} ${error.details ?? ""}`;
   return error.code === "PGRST204" || /(column|schema cache|not find)/i.test(text);
+}
+
+function isMissingTableError(error: { code?: string; message?: string; details?: string }) {
+  const text = `${error.message ?? ""} ${error.details ?? ""}`;
+  return error.code === "42P01" || /does not exist|schema cache|not find/i.test(text);
 }
 
 const publicCoachBaseFields = [
@@ -87,6 +95,10 @@ const publicCoachBaseFields = [
   "founding_price_locked",
   "contact_scan_status",
   "admin_premium_access_until",
+  "coach_direct_preferred",
+  "platform_payment_allowed",
+  "platform_payment_required",
+  "stripe_connected_account_id",
   "subscription_status",
   "created_at",
   "updated_at",
@@ -574,6 +586,97 @@ export async function getAdminTrainingRequests(): Promise<TrainingRequest[]> {
   return (data ?? []) as TrainingRequest[];
 }
 
+export async function getCoachTrainingRequests(coachId: string, limit = 8): Promise<TrainingRequest[]> {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("training_requests")
+    .select("*")
+    .eq("coach_id", coachId)
+    .in("status", ["pending", "accepted_pending_payment", "paid_confirmed"])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as TrainingRequest[];
+}
+
+export async function getTrainingRequestBundleByConversation(
+  conversationId: string,
+): Promise<TrainingRequestBundle> {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return { request: null, coach: null, payments: [], sessions: [] };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: request, error: requestError } = await supabase
+    .from("training_requests")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<TrainingRequest>();
+
+  if (requestError) {
+    if (isMissingColumnError(requestError) || isMissingTableError(requestError)) {
+      return { request: null, coach: null, payments: [], sessions: [] };
+    }
+
+    throw requestError;
+  }
+
+  if (!request) {
+    return { request: null, coach: null, payments: [], sessions: [] };
+  }
+
+  const [
+    { data: payments, error: paymentsError },
+    { data: sessions, error: sessionsError },
+    { data: coach, error: coachError },
+  ] = await Promise.all([
+    supabase
+      .from("training_request_payments")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("training_sessions")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false }),
+    request.coach_id
+      ? supabase.from("coaches").select("*").eq("id", request.coach_id).maybeSingle<Coach>()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (paymentsError && !isMissingTableError(paymentsError)) {
+    throw paymentsError;
+  }
+
+  if (sessionsError && !isMissingTableError(sessionsError)) {
+    throw sessionsError;
+  }
+
+  if (coachError) {
+    throw coachError;
+  }
+
+  return {
+    request,
+    coach: coach ?? null,
+    payments: (payments ?? []) as TrainingRequestPayment[],
+    sessions: (sessions ?? []) as TrainingSession[],
+  };
+}
+
 export async function getAdminCoaches(): Promise<Coach[]> {
   noStore();
   const supabase = createSupabaseAdminClient();
@@ -708,7 +811,7 @@ export async function getCoachCalendarTrainingRequests(coachId: string): Promise
     .select("*")
     .eq("coach_id", coachId)
     .not("requested_date", "is", null)
-    .in("status", ["pending", "accepted", "new", "scheduled"])
+    .in("status", ["pending", "accepted_pending_payment", "paid_confirmed", "completed"])
     .order("requested_date", { ascending: true })
     .order("requested_start_time", { ascending: true });
 
