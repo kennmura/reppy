@@ -282,8 +282,8 @@ async function upsertCoachSubscriptionFromStripeSubscription(
   }
 
   const status = stripeSubscriptionStatus(subscription, eventId);
-  const currentPeriodStart = stripeTimestampToIso(subscription.current_period_start);
-  const currentPeriodEnd = stripeTimestampToIso(subscription.current_period_end);
+  const currentPeriodStart = stripeTimestampToIso(getSubscriptionPeriodTimestamp(subscription, "current_period_start"));
+  const currentPeriodEnd = stripeTimestampToIso(getSubscriptionPeriodTimestamp(subscription, "current_period_end"));
   const activeAccess = ["active", "trialing", "canceling"].includes(status);
   const payload = {
     coach_user_id: coachUserId,
@@ -318,6 +318,31 @@ async function upsertCoachSubscriptionFromStripeSubscription(
       message: result.error.message,
       code: result.error.code,
     });
+    return;
+  }
+
+  if (payload.coach_access_offer_id) {
+    const { error: offerUpdateError } = await supabase
+      .from("coach_access_offers")
+      .update({
+        user_id: coachUserId,
+        coach_id: payload.coach_id,
+        stripe_subscription_id: subscriptionId,
+        stripe_subscription_schedule_id: payload.stripe_subscription_schedule_id,
+        stripe_price_id: payload.stripe_price_id,
+        updated_at: payload.updated_at,
+      })
+      .eq("id", payload.coach_access_offer_id);
+
+    if (offerUpdateError) {
+      console.error("[stripe webhook] offer subscription metadata update failed", {
+        eventId,
+        offerId: payload.coach_access_offer_id,
+        subscriptionId,
+        message: offerUpdateError.message,
+        code: offerUpdateError.code,
+      });
+    }
   }
 }
 
@@ -507,6 +532,20 @@ function numberFromMetadata(value: string | undefined) {
 
 function stripeTimestampToIso(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? new Date(value * 1000).toISOString() : null;
+}
+
+function getSubscriptionPeriodTimestamp(subscription: StripeObject, field: "current_period_start" | "current_period_end") {
+  if (typeof subscription[field] === "number") {
+    return subscription[field];
+  }
+
+  const items = subscription.items;
+  if (!items || typeof items !== "object" || !("data" in items) || !Array.isArray(items.data)) {
+    return null;
+  }
+
+  const firstItem = items.data[0] as Record<string, unknown> | undefined;
+  return typeof firstItem?.[field] === "number" ? firstItem[field] : null;
 }
 
 function stripeSubscriptionStatus(subscription: StripeObject, eventId: string): SubscriptionStatus {

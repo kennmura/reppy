@@ -333,6 +333,7 @@ function paymentErrorMessage(code?: string) {
     "missing-stripe-config": "Stripe checkout is not configured yet.",
     "not-found": "Payment record not found.",
     "not-platform": "This payment is not handled through Reppy.",
+    "payouts-not-ready": "This coach needs to finish Stripe payout setup before Reppy payment can start.",
     "checkout-failed": "Stripe checkout could not be started. Please try again.",
   };
 

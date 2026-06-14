@@ -845,14 +845,26 @@ export async function createTrainingPaymentCheckout(formData: FormData) {
 
     checkoutUrl = session.url;
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[payments] Stripe checkout creation failed", {
       paymentId: payment.id,
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage,
     });
+    if (isStripeDestinationAccountNotReadyError(errorMessage)) {
+      redirect(`${returnPath}?payment_error=payouts-not-ready`);
+    }
     redirect(`${returnPath}?payment_error=checkout-failed`);
   }
 
   redirect(checkoutUrl);
+}
+
+function isStripeDestinationAccountNotReadyError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("destination account") &&
+    (normalized.includes("capabilities") || normalized.includes("transfers") || normalized.includes("charges"))
+  );
 }
 
 export async function requestFutureTrainingSession(formData: FormData) {

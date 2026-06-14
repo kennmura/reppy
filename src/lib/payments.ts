@@ -132,6 +132,19 @@ export type SubscriptionCheckoutSessionResult = {
   url: string;
 };
 
+export type BillingPortalSessionResult = {
+  id: string;
+  url: string;
+};
+
+export type StripeConnectAccountResult = {
+  id: string;
+};
+
+export type StripeConnectOnboardingLinkResult = {
+  url: string;
+};
+
 export async function createStripeCheckoutSession(input: CheckoutSessionInput): Promise<CheckoutSessionResult> {
   const secretKey = stripeSecretKey();
   if (!secretKey) {
@@ -252,6 +265,103 @@ export async function createStripeSubscriptionCheckoutSession(
   };
 }
 
+export async function createStripeBillingPortalSession({
+  customerId,
+  returnPath = "/coach/billing",
+}: {
+  customerId: string;
+  returnPath?: string;
+}): Promise<BillingPortalSessionResult> {
+  const secretKey = stripeSecretKey();
+  if (!secretKey) {
+    throw new Error("Missing STRIPE_SECRET_KEY.");
+  }
+
+  const params = new URLSearchParams();
+  params.set("customer", customerId);
+  params.set("return_url", appUrl(returnPath));
+
+  const data = (await stripePost("https://api.stripe.com/v1/billing_portal/sessions", params)) as {
+    id?: string;
+    url?: string;
+    error?: { message?: string };
+  };
+
+  if (!data.id || !data.url) {
+    throw new Error(data.error?.message ?? "Stripe billing portal did not return a URL.");
+  }
+
+  return {
+    id: data.id,
+    url: data.url,
+  };
+}
+
+export async function createStripeConnectExpressAccount({
+  coachUserId,
+  coachId,
+  email,
+}: {
+  coachUserId: string;
+  coachId: string;
+  email: string | null;
+}): Promise<StripeConnectAccountResult> {
+  const secretKey = stripeSecretKey();
+  if (!secretKey) {
+    throw new Error("Missing STRIPE_SECRET_KEY.");
+  }
+
+  const params = new URLSearchParams();
+  params.set("type", "express");
+  params.set("country", "US");
+  if (email) {
+    params.set("email", email);
+  }
+  params.set("capabilities[card_payments][requested]", "true");
+  params.set("capabilities[transfers][requested]", "true");
+  params.set("metadata[coach_user_id]", coachUserId);
+  params.set("metadata[coach_id]", coachId);
+
+  const data = (await stripePost("https://api.stripe.com/v1/accounts", params)) as {
+    id?: string;
+    error?: { message?: string };
+  };
+
+  if (!data.id) {
+    throw new Error(data.error?.message ?? "Stripe Connect account was not created.");
+  }
+
+  return { id: data.id };
+}
+
+export async function createStripeConnectOnboardingLink({
+  accountId,
+}: {
+  accountId: string;
+}): Promise<StripeConnectOnboardingLinkResult> {
+  const secretKey = stripeSecretKey();
+  if (!secretKey) {
+    throw new Error("Missing STRIPE_SECRET_KEY.");
+  }
+
+  const params = new URLSearchParams();
+  params.set("account", accountId);
+  params.set("type", "account_onboarding");
+  params.set("refresh_url", appUrl("/coach/billing?connect=refresh"));
+  params.set("return_url", appUrl("/coach/billing?connect=return"));
+
+  const data = (await stripePost("https://api.stripe.com/v1/account_links", params)) as {
+    url?: string;
+    error?: { message?: string };
+  };
+
+  if (!data.url) {
+    throw new Error(data.error?.message ?? "Stripe Connect onboarding link was not created.");
+  }
+
+  return { url: data.url };
+}
+
 export async function getStripeSubscription(subscriptionId: string) {
   const secretKey = stripeSecretKey();
   if (!secretKey) {
@@ -299,16 +409,27 @@ export async function createFoundingSubscriptionSchedule({
   }
 
   const updateParams = new URLSearchParams();
+  const phaseStart = schedule.phases?.[0]?.start_date ?? Math.floor(Date.now() / 1000);
+  const foundingPhaseEnd = addMonthsToUnixTimestamp(phaseStart, durationMonths);
+
   updateParams.set("end_behavior", "release");
+  updateParams.set("phases[0][start_date]", String(phaseStart));
+  updateParams.set("phases[0][end_date]", String(foundingPhaseEnd));
   updateParams.set("phases[0][items][0][price]", foundingPriceId);
   updateParams.set("phases[0][items][0][quantity]", "1");
-  updateParams.set("phases[0][iterations]", String(durationMonths));
+  updateParams.set("phases[1][start_date]", String(foundingPhaseEnd));
   updateParams.set("phases[1][items][0][price]", premiumMonthlyPriceId);
   updateParams.set("phases[1][items][0][quantity]", "1");
   updateParams.set("phases[1][metadata][reppy_price_switch]", "founding_to_premium");
 
   await stripePost(`https://api.stripe.com/v1/subscription_schedules/${encodeURIComponent(schedule.id)}`, updateParams);
   return schedule.id;
+}
+
+function addMonthsToUnixTimestamp(timestamp: number, months: number) {
+  const date = new Date(timestamp * 1000);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return Math.floor(date.getTime() / 1000);
 }
 
 async function stripePost(url: string, params: URLSearchParams) {

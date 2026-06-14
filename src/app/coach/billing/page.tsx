@@ -2,7 +2,12 @@ import { CoachShell } from "@/components/coach/CoachShell";
 import { TrialBanner } from "@/components/coach/TrialBanner";
 import { activateCoachTrial } from "@/lib/actions";
 import { getCoachContextOrRedirect } from "@/lib/auth";
-import { redeemFreeCoachOfferAction, startCoachSubscriptionCheckoutAction } from "@/lib/coachPromoActions";
+import {
+  redeemFreeCoachOfferAction,
+  startCoachBillingPortalAction,
+  startCoachPayoutOnboardingAction,
+  startCoachSubscriptionCheckoutAction,
+} from "@/lib/coachPromoActions";
 import { durationLabel, getCoachBillingOfferState } from "@/lib/coachAccessOffers";
 import { getCoachUnreadCount } from "@/lib/data";
 import { getMessageAccess } from "@/lib/entitlements";
@@ -15,6 +20,7 @@ const billingMessages: Record<string, string> = {
   "free-applied": "Free premium access has been applied to your account.",
   "checkout-success": "Stripe checkout completed. Premium access updates after the webhook confirms the subscription.",
   "checkout-cancelled": "Stripe checkout was cancelled.",
+  "portal-return": "Returned from Stripe billing management.",
 };
 
 const billingErrors: Record<string, string> = {
@@ -27,6 +33,10 @@ const billingErrors: Record<string, string> = {
   "missing-stripe-config": "Stripe subscription checkout is not configured yet.",
   "founding-claim-failed": "The founding offer could not be claimed for this account.",
   "checkout-failed": "Stripe checkout could not be started. Try again later.",
+  "missing-customer": "Start a paid subscription before opening billing management.",
+  "portal-failed": "Stripe billing management could not be opened. Try again later.",
+  "connect-failed": "Stripe payout onboarding could not be started. Try again later.",
+  "connect-save-failed": "Stripe payout account could not be saved. Try again later.",
 };
 
 export default async function CoachBillingPage({
@@ -153,6 +163,34 @@ export default async function CoachBillingPage({
               inviteToken={params.invite}
             />
           ) : null}
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-950">Billing management</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Manage payment methods, invoices, and subscription cancellation through Stripe.
+            </p>
+            <form action={startCoachBillingPortalAction} className="mt-5">
+              <button className="rounded-md border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-800 hover:border-slate-500">
+                Open Stripe billing
+              </button>
+            </form>
+          </article>
+          <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-950">Payout setup</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Set up Stripe Connect Express for payouts. Bank and payout details stay with Stripe.
+            </p>
+            <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Status: {coach.stripe_connected_account_id ? "Stripe account created" : "Not started"}
+            </p>
+            <form action={startCoachPayoutOnboardingAction} className="mt-5">
+              <button className="rounded-md border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-800 hover:border-slate-500">
+                Set up payouts
+              </button>
+            </form>
+          </article>
         </section>
       </div>
     </CoachShell>

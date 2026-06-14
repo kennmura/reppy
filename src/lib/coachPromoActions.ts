@@ -15,8 +15,12 @@ import {
   planCodeForOfferType,
 } from "./coachAccessOffers";
 import {
+  createStripeBillingPortalSession,
+  createStripeConnectExpressAccount,
+  createStripeConnectOnboardingLink,
   createStripeSubscriptionCheckoutSession,
   hasStripeCoachSubscriptionConfig,
+  hasStripeCheckoutConfig,
   stripeCoachPriceIdForPlan,
   type CoachSubscriptionPlanCode,
 } from "./payments";
@@ -543,6 +547,114 @@ export async function startCoachSubscriptionCheckoutAction(formData: FormData) {
   }
 
   redirect(checkoutUrl);
+}
+
+export async function startCoachBillingPortalAction() {
+  const { user } = await getCoachContextOrRedirect();
+
+  if (!hasStripeCheckoutConfig()) {
+    redirect("/coach/billing?billing_error=missing-stripe-config");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: subscription, error } = await supabase
+    .from("subscriptions")
+    .select("provider_customer_id")
+    .eq("coach_user_id", user.id)
+    .not("provider_customer_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ provider_customer_id: string | null }>();
+
+  if (error) {
+    console.error("[coach billing] subscription customer lookup failed", {
+      coachUserId: user.id,
+      message: error.message,
+      code: error.code,
+    });
+    redirect("/coach/billing?billing_error=portal-failed");
+  }
+
+  if (!subscription?.provider_customer_id) {
+    redirect("/coach/billing?billing_error=missing-customer");
+  }
+
+  let portalUrl = "";
+  try {
+    const session = await createStripeBillingPortalSession({
+      customerId: subscription.provider_customer_id,
+      returnPath: "/coach/billing?billing=portal-return",
+    });
+    portalUrl = session.url;
+  } catch (error) {
+    console.error("[coach billing] portal creation failed", {
+      coachUserId: user.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    redirect("/coach/billing?billing_error=portal-failed");
+  }
+
+  redirect(portalUrl);
+}
+
+export async function startCoachPayoutOnboardingAction() {
+  const { user, coach } = await getCoachContextOrRedirect();
+
+  if (!hasStripeCheckoutConfig()) {
+    redirect("/coach/billing?billing_error=missing-stripe-config");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  let accountId = coach.stripe_connected_account_id ?? "";
+
+  if (!accountId) {
+    try {
+      const account = await createStripeConnectExpressAccount({
+        coachUserId: user.id,
+        coachId: coach.id,
+        email: user.email ?? coach.email,
+      });
+      accountId = account.id;
+    } catch (error) {
+      console.error("[coach payouts] Connect account creation failed", {
+        coachUserId: user.id,
+        coachId: coach.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      redirect("/coach/billing?billing_error=connect-failed");
+    }
+
+    const { error } = await supabase
+      .from("coaches")
+      .update({ stripe_connected_account_id: accountId, updated_at: new Date().toISOString() })
+      .eq("id", coach.id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[coach payouts] Connect account save failed", {
+        coachUserId: user.id,
+        coachId: coach.id,
+        message: error.message,
+        code: error.code,
+      });
+      redirect("/coach/billing?billing_error=connect-save-failed");
+    }
+  }
+
+  let onboardingUrl = "";
+  try {
+    const link = await createStripeConnectOnboardingLink({ accountId });
+    onboardingUrl = link.url;
+  } catch (error) {
+    console.error("[coach payouts] Connect onboarding link creation failed", {
+      coachUserId: user.id,
+      coachId: coach.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    redirect("/coach/billing?billing_error=connect-failed");
+  }
+
+  redirect(onboardingUrl);
 }
 
 type CsvRow = Record<string, string>;
