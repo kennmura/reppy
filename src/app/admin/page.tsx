@@ -2,13 +2,15 @@ import Link from "next/link";
 import { AdminLayout } from "@/components/AdminLayout";
 import { getAdminUserOrRedirect } from "@/lib/auth";
 import { getAdminCoaches, getAdminPlayerAccounts, getAdminTrainingRequests } from "@/lib/data";
+import { getAdminPassportDashboard } from "@/lib/passportData";
 
 export default async function AdminPage() {
   await getAdminUserOrRedirect();
-  const [requests, coaches, accounts] = await Promise.all([
+  const [requests, coaches, accounts, passport] = await Promise.all([
     getAdminTrainingRequests(),
     getAdminCoaches(),
     getAdminPlayerAccounts(),
+    getAdminPassportDashboard(),
   ]);
   const pendingProfiles = coaches.filter((coach) => coach.profile_status === "pending_review").length;
   const publishedCoaches = coaches.filter((coach) => coach.is_published).length;
@@ -26,15 +28,18 @@ export default async function AdminPage() {
           <Metric label="Published coaches" value={publishedCoaches} />
           <Metric label="Draft coaches" value={draftCoaches} />
           <Metric label="Player accounts" value={accounts.length} />
+          <Metric label="Passport players" value={passport.players.length} />
           <Metric label="Training requests" value={requests.length} />
-          <Metric label="Reports" value={0} />
+          <Metric label="Reports" value={passport.reports.filter((report) => report.status === "open").length} />
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <AdminLink href="/admin/requests" title="Review requests" body="View inquiry details, update status, and remove spam." />
           <AdminLink href="/admin/coaches" title="Manage coaches" body="Edit profile fields and publish settings." />
           <AdminLink href="/admin/accounts" title="Player accounts" body="Read-only testing view for parent and adult player accounts." />
+          <AdminLink href="/admin/passport" title="Passport moderation" body="Review player profiles, teams, roster invites, and reported Passport content." />
           <AdminLink href="/admin/coach-applications" title="Applications" body="Review coaches who asked to get on the directory radar." />
           <AdminLink href="/admin/coach-promo" title="Coach Promo" body="Grant free premium access or private founding-rate offers by coach email." />
+          <AdminLink href="/admin/reviews" title="Review moderation" body="Publish, hide, or remove pending and reported coach reviews." />
           <AdminLink href="/admin/reports" title="Reports" body="Review message and safety reports." />
         </div>
       </div>

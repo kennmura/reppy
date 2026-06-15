@@ -37,7 +37,16 @@ function safeNext(value: string, fallback = "/account/dashboard") {
 
 function redirectAccountRegisterWithError(formData: FormData, error: string, next: string): never {
   const params = new URLSearchParams({ error });
-  const preservedKeys = ["player_name", "guardian_name", "player_date_of_birth", "display_name", "email", "phone", "role"];
+  const preservedKeys = [
+    "player_name",
+    "guardian_name",
+    "player_date_of_birth",
+    "display_name",
+    "email",
+    "phone",
+    "role",
+    "registration_mode",
+  ];
 
   for (const key of preservedKeys) {
     const value = textValue(formData, key);
@@ -393,11 +402,12 @@ async function seedCoachProfileFromSignup({
 
 export async function registerAccount(formData: FormData) {
   const role = textValue(formData, "role") === "adult_player" ? "adult_player" : "parent";
-  const phone = normalizePhoneE164(textValue(formData, "phone"));
+  const reviewOnly = textValue(formData, "registration_mode") === "review";
+  const phone = reviewOnly ? "" : normalizePhoneE164(textValue(formData, "phone"));
   const acceptedPrivacy = formData.get("privacy") === "on";
   const next = safeNext(textValue(formData, "next"), "/account/settings?error=missing-player-profile");
 
-  if (!phone) {
+  if (!reviewOnly && !phone) {
     redirectAccountRegisterWithError(formData, "invalid-phone", next);
   }
 
@@ -413,11 +423,11 @@ export async function registerAccount(formData: FormData) {
   const { password, error: passwordError } = passwordPair(formData);
   const acceptedTerms = formData.get("terms") === "on";
 
-  if (!playerName || !playerDateOfBirth || !email || !password || (role === "parent" && !guardianName)) {
+  if (!playerName || !email || !password || (!reviewOnly && (!playerDateOfBirth || (role === "parent" && !guardianName)))) {
     redirectAccountRegisterWithError(formData, "missing-fields", next);
   }
 
-  if (!isReasonablePlayerDateOfBirth(playerDateOfBirth)) {
+  if (!reviewOnly && !isReasonablePlayerDateOfBirth(playerDateOfBirth)) {
     redirectAccountRegisterWithError(formData, "invalid-dob", next);
   }
 
@@ -453,11 +463,12 @@ export async function registerAccount(formData: FormData) {
 
   console.info("[registerAccount] Starting account registration", {
     role,
+    reviewOnly,
     phoneVerificationBypassed: phoneBypassed,
   });
 
   const supabase = await createSupabaseServerClient();
-  const callbackNext = phoneBypassed ? next : `/account/verify-phone?next=${encodeURIComponent(next)}`;
+  const callbackNext = reviewOnly || phoneBypassed ? next : `/account/verify-phone?next=${encodeURIComponent(next)}`;
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -466,6 +477,7 @@ export async function registerAccount(formData: FormData) {
       data: {
         full_name: displayName,
         role,
+        registration_mode: reviewOnly ? "review" : "full",
       },
     },
   });
@@ -504,7 +516,7 @@ export async function registerAccount(formData: FormData) {
       role,
       displayName,
       emailVerifiedAt: data.user.email_confirmed_at ?? null,
-      phoneVerifiedAt: phoneBypassed ? new Date().toISOString() : data.user.phone_confirmed_at ?? null,
+      phoneVerifiedAt: reviewOnly ? null : phoneBypassed ? new Date().toISOString() : data.user.phone_confirmed_at ?? null,
     });
   } catch (profileError) {
     console.error("[registerAccount] Failed to create user profile", {
@@ -518,66 +530,70 @@ export async function registerAccount(formData: FormData) {
     redirectAccountRegisterWithError(formData, "profile-create-failed", next);
   }
 
-  try {
-    await ensureAccountPrivateDetails({
-      userId: data.user.id,
-      accountType: role,
-      phoneE164: phone,
-      phoneVerifiedAt: phoneBypassed ? new Date().toISOString() : data.user.phone_confirmed_at ?? null,
-      playerDateOfBirth,
-    });
-  } catch (privateDetailsError) {
-    console.error("[registerAccount] Failed to upsert private account details", {
-      userId: data.user.id,
-      role,
-      error: serializableSupabaseError(privateDetailsError),
-    });
-    if (createdNewAuthUser) {
-      await cleanupNewAuthUser(data.user.id, "private-details-failed");
+  if (!reviewOnly) {
+    try {
+      await ensureAccountPrivateDetails({
+        userId: data.user.id,
+        accountType: role,
+        phoneE164: phone,
+        phoneVerifiedAt: phoneBypassed ? new Date().toISOString() : data.user.phone_confirmed_at ?? null,
+        playerDateOfBirth,
+      });
+    } catch (privateDetailsError) {
+      console.error("[registerAccount] Failed to upsert private account details", {
+        userId: data.user.id,
+        role,
+        error: serializableSupabaseError(privateDetailsError),
+      });
+      if (createdNewAuthUser) {
+        await cleanupNewAuthUser(data.user.id, "private-details-failed");
+      }
+      redirectAccountRegisterWithError(formData, "private-details-failed", next);
     }
-    redirectAccountRegisterWithError(formData, "private-details-failed", next);
-  }
 
-  try {
-    const { error: preferenceError } = await admin.from("user_coaching_preferences").upsert(
-      {
-        user_id: data.user.id,
-        player_name: playerName,
-        guardian_name: guardianName || null,
-        player_age: String(calculateAgeFromDateOfBirth(playerDateOfBirth) ?? ""),
-        player_birth_date: playerDateOfBirth,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" },
-    );
+    try {
+      const { error: preferenceError } = await admin.from("user_coaching_preferences").upsert(
+        {
+          user_id: data.user.id,
+          player_name: playerName,
+          guardian_name: guardianName || null,
+          player_age: String(calculateAgeFromDateOfBirth(playerDateOfBirth) ?? ""),
+          player_birth_date: playerDateOfBirth,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
 
-    if (preferenceError) {
+      if (preferenceError) {
+        console.error("[registerAccount] Failed to seed player profile fields", {
+          userId: data.user.id,
+          role,
+          error: serializableSupabaseError(preferenceError),
+        });
+      }
+    } catch (preferenceError) {
       console.error("[registerAccount] Failed to seed player profile fields", {
         userId: data.user.id,
         role,
         error: serializableSupabaseError(preferenceError),
       });
     }
-  } catch (preferenceError) {
-    console.error("[registerAccount] Failed to seed player profile fields", {
-      userId: data.user.id,
-      role,
-      error: serializableSupabaseError(preferenceError),
-    });
   }
 
   if (data.session && data.user.email_confirmed_at) {
     console.info("[registerAccount] Account registration completed with immediate session", {
       role,
       userId: data.user.id,
+      reviewOnly,
       phoneVerificationBypassed: phoneBypassed,
     });
-    redirect(phoneBypassed ? next : `/account/verify-phone?next=${encodeURIComponent(next)}`);
+    redirect(reviewOnly || phoneBypassed ? next : `/account/verify-phone?next=${encodeURIComponent(next)}`);
   }
 
   console.info("[registerAccount] Account registration completed; email verification required", {
     role,
     userId: data.user.id,
+    reviewOnly,
     phoneVerificationBypassed: phoneBypassed,
   });
   redirect(`/account/login?message=verify-email&next=${encodeURIComponent(next)}`);

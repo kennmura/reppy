@@ -5,8 +5,11 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 const links = [
   { href: "/coach/dashboard", label: "Dashboard" },
+  { href: "/coach/passport", label: "Passport" },
+  { href: "/coach/passport/teams", label: "Teams" },
   { href: "/coach/calendar", label: "Calendar" },
   { href: "/coach/profile", label: "Profile" },
+  { href: "/coach/reviews", label: "Reviews" },
   { href: "/coach/messages", label: "Messages" },
   { href: "/coach/messages?status=unread", label: "Requests" },
   { href: "/coach/billing", label: "Billing / Subscription" },
@@ -23,11 +26,16 @@ export function CoachSidebarNav({ unreadCount }: { unreadCount: number }) {
       {links.map((link) => {
         const hrefPath = link.href.split("?")[0];
         const isRequests = link.href.includes("status=unread");
-        const active = isRequests
-          ? pathname === "/coach/messages" && status === "unread"
-          : hrefPath === "/coach/messages"
-            ? pathname.startsWith("/coach/messages/") || (pathname === "/coach/messages" && !status)
-            : pathname === hrefPath;
+        let active = pathname === hrefPath;
+        if (isRequests) {
+          active = pathname === "/coach/messages" && status === "unread";
+        } else if (hrefPath === "/coach/messages") {
+          active = pathname.startsWith("/coach/messages/") || (pathname === "/coach/messages" && !status);
+        } else if (hrefPath === "/coach/passport/teams") {
+          active = pathname.startsWith("/coach/passport/teams");
+        } else if (hrefPath === "/coach/passport") {
+          active = pathname === "/coach/passport";
+        }
 
         return (
           <Link

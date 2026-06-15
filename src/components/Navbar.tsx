@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signOutCurrentUser } from "@/lib/actions";
 import { getApplicationProfile } from "@/lib/auth";
+import { isMarketplaceVisible, isPassportEnabled } from "@/lib/featureFlags";
 import { createSupabaseServerClient, hasSupabaseAdminConfig, hasSupabaseConfig } from "@/lib/supabase";
 import { AuthMenu } from "./AuthMenu";
 
@@ -58,7 +59,12 @@ async function getSessionNav() {
 
 export async function Navbar() {
   const sessionNav = await getSessionNav();
-  const showFindCoaches = sessionNav?.role !== "coach";
+  const showFindCoaches = sessionNav?.role !== "coach" && isMarketplaceVisible();
+  const showPassport = isPassportEnabled();
+  const passportHref = sessionNav?.role === "coach" ? "/coach/passport" : "/account/passport";
+  const teamsHref = sessionNav?.role === "coach" ? "/coach/passport/teams" : "/passport/join";
+  const feedbackHref = sessionNav?.role === "coach" ? "/coach/passport/teams" : "/account/passport";
+  const profileHref = sessionNav?.profileHref ?? "/account/login";
   const navLinkClass = "inline-flex h-10 items-center rounded-md px-2 text-sm font-medium hover:text-slate-950";
   const secondaryButtonClass =
     "inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:border-slate-500 focus:outline-none focus:ring-2 focus:ring-[#12355b]/20";
@@ -78,6 +84,16 @@ export async function Navbar() {
           <Link href="/" className={navLinkClass}>
             Home
           </Link>
+          {showPassport ? (
+            <>
+              <Link href={passportHref} className={navLinkClass}>
+                Passport
+              </Link>
+              <Link href={teamsHref} className={navLinkClass}>
+                Teams
+              </Link>
+            </>
+          ) : null}
           {showFindCoaches ? (
             <Link href="/coaches" className={primaryButtonClass}>
               Find Coaches
@@ -102,6 +118,15 @@ export async function Navbar() {
           )}
         </div>
       </nav>
+      {showPassport ? (
+        <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white text-[11px] font-semibold text-slate-600 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] sm:hidden">
+          <Link href="/" className="flex min-h-14 items-center justify-center px-2">Home</Link>
+          <Link href={passportHref} className="flex min-h-14 items-center justify-center px-2">Passport</Link>
+          <Link href={teamsHref} className="flex min-h-14 items-center justify-center px-2">Teams</Link>
+          <Link href={feedbackHref} className="flex min-h-14 items-center justify-center px-2">Feedback</Link>
+          <Link href={profileHref} className="flex min-h-14 items-center justify-center px-2">Profile</Link>
+        </nav>
+      ) : null}
     </header>
   );
 }

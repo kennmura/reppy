@@ -1072,6 +1072,22 @@ export async function markDirectPaymentReceived(formData: FormData) {
     actionUrl: `/account/messages/${payment.conversation_id}`,
   });
 
+  if (payment.requester_user_id && payment.training_request_id) {
+    const reviewUrl = `/reviews/session/${payment.training_request_id}`;
+    await createNotification({
+      userId: payment.requester_user_id,
+      type: "system",
+      title: "Review your coach",
+      body: "After your confirmed session, leave a verified Reppy review.",
+      relatedConversationId: payment.conversation_id,
+      actionUrl: reviewUrl,
+    }).catch(() => null);
+    await addSystemMessage({
+      conversationId: payment.conversation_id,
+      body: `After your confirmed session, you can leave a verified Reppy review: ${reviewUrl}`,
+    });
+  }
+
   revalidatePath("/coach/messages");
   revalidatePath(returnPath);
   redirect(`${returnPath}?payment=direct-received`);
@@ -1102,6 +1118,33 @@ export async function updateConversationStatus(formData: FormData) {
 
   if (error) {
     throw error;
+  }
+
+  if (status === "completed") {
+    const { data: request } = await supabase
+      .from("training_requests")
+      .select("id, requester_user_id")
+      .eq("conversation_id", conversationId)
+      .eq("coach_id", coach.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string; requester_user_id: string | null }>();
+
+    if (request?.requester_user_id) {
+      const reviewUrl = `/reviews/session/${request.id}`;
+      await createNotification({
+        userId: request.requester_user_id,
+        type: "system",
+        title: "Review your coach",
+        body: "Your session was marked complete. Leave a verified Reppy review.",
+        relatedConversationId: conversationId,
+        actionUrl: reviewUrl,
+      }).catch(() => null);
+      await addSystemMessage({
+        conversationId,
+        body: `This session was marked complete. You can leave a verified Reppy review: ${reviewUrl}`,
+      });
+    }
   }
 
   revalidatePath("/coach/messages");

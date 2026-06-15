@@ -39,6 +39,10 @@ const sections = [
     title: "Parents, guardians, and minors",
     body: "For athletes under 18, a parent or guardian should be involved in training communication and scheduling. Adults using Reppy are responsible for choosing safe public or supervised training locations and for following school, league, facility, and youth-safety requirements.",
   },
+  {
+    title: "Reviews",
+    body: "Reviews must come from real Reppy accounts. Coaches may invite clients to review them, reply publicly, and report reviews for moderation, but coaches may not review themselves or directly delete negative reviews. Reppy may hide or remove reviews containing spam, harassment, threats, private contact information, private minor details, medical information, exact addresses, paid-review activity, or clearly abusive content.",
+  },
 ];
 
 export default function TermsPage() {

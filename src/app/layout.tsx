@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Reppy | Local Sports Coaching",
+  title: "Reppy Passport | Player Development Profiles",
   description:
-    "Find local sports coaches for private and small-group training across multiple sports.",
+    "Reppy Passport helps athletes carry coach feedback, clips, and development history across high school, club, and private training.",
   manifest: "/manifest.webmanifest",
 };
 
@@ -31,7 +31,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-white text-slate-950">
+      <body className="min-h-full bg-white pb-14 text-slate-950 sm:pb-0">
         <Navbar />
         <div className="min-h-[calc(100vh-145px)]">{children}</div>
         <Footer />

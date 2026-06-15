@@ -1,14 +1,7 @@
 import Link from "next/link";
 import { NotificationBell } from "@/components/NotificationBell";
 import { signOutAccount } from "@/lib/actions";
-
-const links = [
-  { href: "/account/dashboard", label: "Dashboard" },
-  { href: "/account/messages", label: "Messages" },
-  { href: "/coaches", label: "Find Coaches" },
-  { href: "/account/preferences", label: "Preferences" },
-  { href: "/account/settings", label: "Profile / Settings" },
-];
+import { isMarketplaceVisible } from "@/lib/featureFlags";
 
 export function AccountShell({
   children,
@@ -19,6 +12,17 @@ export function AccountShell({
   userId: string;
   notificationCount: number;
 }) {
+  const links = [
+    { href: "/account/dashboard", label: "Dashboard" },
+    { href: "/account/passport", label: "Passport" },
+    { href: "/account/players", label: "Manage athletes" },
+    { href: "/passport/join", label: "Join team" },
+    { href: "/account/messages", label: "Messages" },
+    ...(isMarketplaceVisible() ? [{ href: "/coaches", label: "Find Coaches" }] : []),
+    { href: "/account/preferences", label: "Preferences" },
+    { href: "/account/settings", label: "Profile / Settings" },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">

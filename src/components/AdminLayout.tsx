@@ -30,6 +30,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <Link href="/admin/accounts" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
             Accounts
           </Link>
+          <Link href="/admin/passport" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
+            Passport
+          </Link>
           <Link href="/admin/coach-applications" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
             Applications
           </Link>
@@ -38,6 +41,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <Link href="/admin/reports" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
             Reports
+          </Link>
+          <Link href="/admin/reviews" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
+            Reviews
           </Link>
           <Link href="/admin/bans" className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white">
             Bans

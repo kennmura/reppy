@@ -450,15 +450,72 @@ export type SavedCoach = {
 export type CoachReview = {
   id: string;
   coach_id: string;
-  reviewer_user_id: string | null;
-  conversation_id: string | null;
-  rating: number;
-  headline: string | null;
-  body: string | null;
-  status: "pending" | "approved" | "rejected" | "reported" | "hidden";
+  reviewer_user_id: string;
+  conversation_id?: string | null;
+  training_request_id: string | null;
+  training_session_id: string | null;
+  review_invite_id: string | null;
+  review_type: "invited_client" | "verified_session";
+  status: "pending" | "published" | "hidden" | "reported" | "removed";
+  rating?: number;
+  headline?: string | null;
+  body?: string | null;
+  overall_rating: number;
+  communication_rating: number | null;
+  reliability_rating: number | null;
+  training_quality_rating: number | null;
+  review_title: string | null;
+  review_body: string;
+  reviewer_relationship: "parent_guardian" | "player" | "adult_player" | "former_player";
+  player_age_band: "U8" | "U10" | "U12" | "U14" | "high_school" | "college" | "adult" | null;
+  training_type: string | null;
+  tags: string[];
+  coach_reply: string | null;
+  coach_reply_at: string | null;
+  reported_at: string | null;
+  report_reason: string | null;
+  moderated_by: string | null;
+  moderated_at: string | null;
   created_at: string;
   updated_at: string;
   published_at: string | null;
+};
+
+export type CoachReviewInvite = {
+  id: string;
+  coach_id: string;
+  invited_email_normalized: string;
+  invite_token: string;
+  invited_by_user_id: string;
+  invite_note: string | null;
+  status: "sent" | "opened" | "completed" | "expired" | "revoked";
+  expires_at: string | null;
+  completed_by_user_id: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CoachReviewSummary = {
+  averageRating: number | null;
+  reviewCount: number;
+  pendingCount: number;
+  publishedCount: number;
+  verifiedCount: number;
+  invitedCount: number;
+  breakdown: Record<1 | 2 | 3 | 4 | 5, number>;
+};
+
+export type CoachReliabilityBadge = {
+  label: string;
+  active: boolean;
+  detail: string;
+};
+
+export type CoachReliability = {
+  label: string;
+  score: number | null;
+  badges: CoachReliabilityBadge[];
 };
 
 export type ConversationStatus =
@@ -605,6 +662,9 @@ export type CoachProfileData = {
   testimonials: CoachTestimonial[];
   credentials?: CoachCredential[];
   availabilityBlocks?: CoachAvailabilityBlock[];
+  reviews?: CoachReview[];
+  reviewSummary?: CoachReviewSummary;
+  reliability?: CoachReliability;
 };
 
 export type UserCoachingPreference = {

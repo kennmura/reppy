@@ -19,6 +19,17 @@ export async function CoachProfile({
   viewerMode?: "public" | "owner";
 }) {
   const { coach, services, audiences, testimonials, credentials = [], availabilityBlocks = [] } = profile;
+  const reviews = profile.reviews ?? [];
+  const reviewSummary = profile.reviewSummary ?? {
+    averageRating: null,
+    reviewCount: 0,
+    pendingCount: 0,
+    publishedCount: 0,
+    verifiedCount: 0,
+    invitedCount: 0,
+    breakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+  };
+  const reliability = profile.reliability;
   const isOwner = viewerMode === "owner";
   const accountState = isOwner ? null : await getRequestingAccountState();
   const savedCoachIds =
@@ -62,8 +73,17 @@ export async function CoachProfile({
                   label="Status"
                   value={coach.accepting_requests === false ? "Not currently accepting requests" : "Accepting requests"}
                 />
+                <QuickFact
+                  label="Reviews"
+                  value={
+                    reviewSummary.reviewCount
+                      ? `${reviewSummary.averageRating?.toFixed(1)} stars from ${reviewSummary.reviewCount} review${reviewSummary.reviewCount === 1 ? "" : "s"}`
+                      : "No published reviews yet"
+                  }
+                />
               </div>
             </section>
+            {reliability ? <ReliabilityCard reliability={reliability} /> : null}
             {audiences.length || coach.age_groups || coach.skill_levels || coach.positions ? (
               <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 className="text-lg font-semibold text-slate-950">Best for</h2>
@@ -174,6 +194,7 @@ export async function CoachProfile({
       </section>
       <LocationSection coach={coach} />
       <PricingSection coach={coach} />
+      <PublicReviewsSection reviews={reviews} summary={reviewSummary} />
       {testimonials.length ? (
         <section className="bg-white py-16">
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
@@ -252,6 +273,144 @@ function MiniInfo({ title, body }: { title: string; body: string }) {
       <p className="mt-2 text-sm leading-6 text-slate-700">{body}</p>
     </div>
   );
+}
+
+function ReliabilityCard({ reliability }: { reliability: NonNullable<CoachProfileData["reliability"]> }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-950">Reliability</h2>
+      <p className="mt-2 text-sm font-semibold text-[#12355b]">{reliability.label}</p>
+      <div className="mt-4 grid gap-2">
+        {reliability.badges.map((badge) => (
+          <div
+            key={badge.label}
+            className={`rounded-md border px-3 py-2 text-sm ${
+              badge.active
+                ? "border-[#d7e5dc] bg-[#f3f8f5] text-slate-800"
+                : "border-slate-200 bg-slate-50 text-slate-500"
+            }`}
+          >
+            <p className="font-semibold">{badge.active ? badge.label : `${badge.label} pending`}</p>
+            <p className="mt-1 text-xs leading-5">{badge.detail}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PublicReviewsSection({
+  reviews,
+  summary,
+}: {
+  reviews: NonNullable<CoachProfileData["reviews"]>;
+  summary: NonNullable<CoachProfileData["reviewSummary"]>;
+}) {
+  return (
+    <section id="reviews" className="bg-white py-16">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6f5e]">Reviews</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Client reviews</h2>
+            <p className="mt-3 max-w-2xl leading-7 text-slate-700">
+              Reviews are account-based and moderated. Reppy does not show reviewer email addresses or private player details.
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+            <p className="text-2xl font-semibold text-slate-950">
+              {summary.reviewCount ? `${summary.averageRating?.toFixed(1)} / 5` : "No rating yet"}
+            </p>
+            <p className="mt-1 text-slate-600">
+              {summary.reviewCount} published review{summary.reviewCount === 1 ? "" : "s"}
+            </p>
+          </div>
+        </div>
+        {summary.reviewCount >= 3 ? (
+          <div className="mt-6 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-5">
+            {[5, 4, 3, 2, 1].map((rating) => (
+              <div key={rating} className="text-sm text-slate-700">
+                <span className="font-semibold text-slate-950">{rating} stars:</span>{" "}
+                {summary.breakdown[rating as 1 | 2 | 3 | 4 | 5]}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {reviews.length ? (
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            {reviews.map((review) => (
+              <article key={review.id} className="rounded-lg border border-slate-200 p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StarRating rating={review.overall_rating} />
+                  <span className="rounded-md border border-[#d7e5dc] bg-[#f3f8f5] px-2 py-1 text-xs font-semibold text-[#2f6f5e]">
+                    {review.review_type === "verified_session" ? "Verified Reppy session" : "Invited client review"}
+                  </span>
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-slate-950">{review.review_title || "Client review"}</h3>
+                <p className="mt-2 text-sm font-medium text-slate-600">
+                  {reviewerLabel(review)} - {new Date(review.published_at ?? review.created_at).toLocaleDateString()}
+                </p>
+                <p className="mt-4 whitespace-pre-wrap leading-7 text-slate-700">{review.review_body}</p>
+                {review.tags.length ? (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {review.tags.map((tag) => (
+                      <span key={tag} className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {review.coach_reply ? (
+                  <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-semibold text-slate-950">Coach reply</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">{review.coach_reply}</p>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-5 text-slate-600">
+            This coach does not have published Reppy reviews yet.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StarRating({ rating }: { rating: number }) {
+  return (
+    <div className="flex items-center gap-1 text-[#2f6f5e]" aria-label={`${rating} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((value) => (
+        <Star key={value} className={`h-4 w-4 ${value <= rating ? "fill-current" : ""}`} />
+      ))}
+    </div>
+  );
+}
+
+function reviewerLabel(review: NonNullable<CoachProfileData["reviews"]>[number]) {
+  if (review.reviewer_relationship === "adult_player") {
+    return "Adult player";
+  }
+
+  if (review.reviewer_relationship === "former_player") {
+    return "Former player";
+  }
+
+  if (review.reviewer_relationship === "player") {
+    return review.player_age_band ? `${ageBandLabel(review.player_age_band)} player` : "Player";
+  }
+
+  return review.player_age_band ? `Parent of ${ageBandLabel(review.player_age_band)} player` : "Parent/guardian";
+}
+
+function ageBandLabel(value: string) {
+  if (value === "high_school") {
+    return "high school";
+  }
+
+  return value;
 }
 
 function SocialProfileHeader({
@@ -375,6 +534,9 @@ function SocialProfileHeader({
           </Link>
           <Link href="#availability" className="whitespace-nowrap hover:text-slate-950">
             Availability
+          </Link>
+          <Link href="#reviews" className="whitespace-nowrap hover:text-slate-950">
+            Reviews
           </Link>
           {isOwner ? (
             <Link href="/coach/calendar" className="whitespace-nowrap hover:text-slate-950">

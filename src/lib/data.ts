@@ -21,7 +21,11 @@ import type {
   CoachAvailabilityBlock,
   CoachCredential,
   CoachProfileData,
+  CoachReliability,
   CoachService,
+  CoachReview,
+  CoachReviewInvite,
+  CoachReviewSummary,
   CoachTestimonial,
   ConversationSafeMetadata,
   ConversationThread,
@@ -290,6 +294,7 @@ export async function getCoachProfileBySlug(slug: string): Promise<CoachProfileD
       supabase.from("coach_credentials").select("*").eq("coach_id", coach.id).order("sort_order"),
       getCoachAvailabilityBlocks(coach.id),
     ]);
+  const extras = await getCoachPublicReviewExtras(coach, availabilityBlocks);
 
   return {
     coach,
@@ -298,6 +303,7 @@ export async function getCoachProfileBySlug(slug: string): Promise<CoachProfileD
     testimonials: sortByOrder((testimonials ?? []) as CoachTestimonial[]),
     credentials: sortByOrder((credentials ?? []) as CoachCredential[]),
     availabilityBlocks,
+    ...extras,
   };
 }
 
@@ -315,6 +321,7 @@ async function getCoachProfileByCoach(coach: Coach): Promise<CoachProfileData> {
       supabase.from("coach_credentials").select("*").eq("coach_id", coach.id).order("sort_order"),
       getCoachAvailabilityBlocks(coach.id),
     ]);
+  const extras = await getCoachPublicReviewExtras(coach, availabilityBlocks);
 
   return {
     coach,
@@ -323,6 +330,364 @@ async function getCoachProfileByCoach(coach: Coach): Promise<CoachProfileData> {
     testimonials: sortByOrder((testimonials ?? []) as CoachTestimonial[]),
     credentials: sortByOrder((credentials ?? []) as CoachCredential[]),
     availabilityBlocks,
+    ...extras,
+  };
+}
+
+function normalizeReview(row: Partial<CoachReview> & Record<string, unknown>): CoachReview {
+  const rawStatus = String((row as Record<string, unknown>).status ?? "");
+  const legacyStatus = rawStatus === "approved" ? "published" : rawStatus === "rejected" ? "removed" : rawStatus;
+  const reviewBody = typeof row.review_body === "string" ? row.review_body : typeof row.body === "string" ? row.body : "";
+  const overallRating =
+    typeof row.overall_rating === "number"
+      ? row.overall_rating
+      : typeof row.rating === "number"
+        ? row.rating
+        : 1;
+
+  return {
+    id: String(row.id ?? ""),
+    coach_id: String(row.coach_id ?? ""),
+    reviewer_user_id: String(row.reviewer_user_id ?? ""),
+    conversation_id: typeof row.conversation_id === "string" ? row.conversation_id : null,
+    training_request_id: typeof row.training_request_id === "string" ? row.training_request_id : null,
+    training_session_id: typeof row.training_session_id === "string" ? row.training_session_id : null,
+    review_invite_id: typeof row.review_invite_id === "string" ? row.review_invite_id : null,
+    review_type: row.review_type === "verified_session" ? "verified_session" : "invited_client",
+    status:
+      legacyStatus === "published" ||
+      legacyStatus === "hidden" ||
+      legacyStatus === "reported" ||
+      legacyStatus === "removed"
+        ? legacyStatus
+        : "pending",
+    rating: typeof row.rating === "number" ? row.rating : overallRating,
+    headline: typeof row.headline === "string" ? row.headline : typeof row.review_title === "string" ? row.review_title : null,
+    body: typeof row.body === "string" ? row.body : reviewBody,
+    overall_rating: overallRating,
+    communication_rating: typeof row.communication_rating === "number" ? row.communication_rating : null,
+    reliability_rating: typeof row.reliability_rating === "number" ? row.reliability_rating : null,
+    training_quality_rating: typeof row.training_quality_rating === "number" ? row.training_quality_rating : null,
+    review_title: typeof row.review_title === "string" ? row.review_title : typeof row.headline === "string" ? row.headline : null,
+    review_body: reviewBody,
+    reviewer_relationship:
+      row.reviewer_relationship === "player" ||
+      row.reviewer_relationship === "adult_player" ||
+      row.reviewer_relationship === "former_player"
+        ? row.reviewer_relationship
+        : "parent_guardian",
+    player_age_band:
+      row.player_age_band === "U8" ||
+      row.player_age_band === "U10" ||
+      row.player_age_band === "U12" ||
+      row.player_age_band === "U14" ||
+      row.player_age_band === "high_school" ||
+      row.player_age_band === "college" ||
+      row.player_age_band === "adult"
+        ? row.player_age_band
+        : null,
+    training_type: typeof row.training_type === "string" ? row.training_type : null,
+    tags: Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    coach_reply: typeof row.coach_reply === "string" ? row.coach_reply : null,
+    coach_reply_at: typeof row.coach_reply_at === "string" ? row.coach_reply_at : null,
+    reported_at: typeof row.reported_at === "string" ? row.reported_at : null,
+    report_reason: typeof row.report_reason === "string" ? row.report_reason : null,
+    moderated_by: typeof row.moderated_by === "string" ? row.moderated_by : null,
+    moderated_at: typeof row.moderated_at === "string" ? row.moderated_at : null,
+    created_at: String(row.created_at ?? new Date().toISOString()),
+    updated_at: String(row.updated_at ?? new Date().toISOString()),
+    published_at: typeof row.published_at === "string" ? row.published_at : null,
+  };
+}
+
+function emptyReviewSummary(): CoachReviewSummary {
+  return {
+    averageRating: null,
+    reviewCount: 0,
+    pendingCount: 0,
+    publishedCount: 0,
+    verifiedCount: 0,
+    invitedCount: 0,
+    breakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+  };
+}
+
+export function summarizeReviews(reviews: CoachReview[]): CoachReviewSummary {
+  const summary = emptyReviewSummary();
+  const publishedReviews = reviews.filter((review) => review.status === "published");
+
+  summary.reviewCount = publishedReviews.length;
+  summary.pendingCount = reviews.filter((review) => review.status === "pending").length;
+  summary.publishedCount = publishedReviews.length;
+  summary.verifiedCount = publishedReviews.filter((review) => review.review_type === "verified_session").length;
+  summary.invitedCount = publishedReviews.filter((review) => review.review_type === "invited_client").length;
+
+  if (!publishedReviews.length) {
+    return summary;
+  }
+
+  let total = 0;
+  for (const review of publishedReviews) {
+    const rating = Math.max(1, Math.min(5, review.overall_rating));
+    total += rating;
+    summary.breakdown[rating as 1 | 2 | 3 | 4 | 5] += 1;
+  }
+
+  summary.averageRating = Math.round((total / publishedReviews.length) * 10) / 10;
+  return summary;
+}
+
+async function getCoachRequestStats(coachId: string) {
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return { requestCount: 0, respondedCount: 0, completedSessionCount: 0 };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const [{ count: requestCount }, { count: pendingCount }, { count: completedSessionCount }] = await Promise.all([
+    supabase.from("training_requests").select("id", { count: "exact", head: true }).eq("coach_id", coachId),
+    supabase
+      .from("training_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("coach_id", coachId)
+      .eq("status", "pending"),
+    supabase
+      .from("training_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("coach_id", coachId)
+      .in("status", ["paid_confirmed", "confirmed", "completed"]),
+  ]);
+
+  return {
+    requestCount: requestCount ?? 0,
+    respondedCount: Math.max(0, (requestCount ?? 0) - (pendingCount ?? 0)),
+    completedSessionCount: completedSessionCount ?? 0,
+  };
+}
+
+function calculateCoachReliability({
+  coach,
+  availabilityBlocks,
+  summary,
+  requestCount,
+  respondedCount,
+  completedSessionCount,
+}: {
+  coach: Coach;
+  availabilityBlocks: CoachAvailabilityBlock[];
+  summary: CoachReviewSummary;
+  requestCount: number;
+  respondedCount: number;
+  completedSessionCount: number;
+}): CoachReliability {
+  const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
+  const availabilityUpdatedRecently = availabilityBlocks.some((block) => new Date(block.updated_at).getTime() >= fourteenDaysAgo);
+  const profileComplete =
+    (coach.profile_completion ?? 0) >= 80 ||
+    Boolean(coach.bio && coach.headline && coach.profile_photo_url && coach.sport && coach.public_location);
+  const badges = [
+    {
+      label: "Profile complete",
+      active: profileComplete,
+      detail: "Core profile, sport, bio, location, and photos are filled out.",
+    },
+    {
+      label: "Payment ready",
+      active: Boolean(coach.stripe_connected_account_id || coach.platform_payment_allowed),
+      detail: "Coach can support Reppy payments or has payout setup in progress.",
+    },
+    {
+      label: "Availability updated recently",
+      active: availabilityUpdatedRecently,
+      detail: "Availability was updated in the last 14 days.",
+    },
+    {
+      label: "Responds quickly",
+      active: requestCount > 0 && respondedCount === requestCount,
+      detail: "No pending unanswered Reppy requests are currently counted.",
+    },
+    {
+      label: "Completed Reppy sessions",
+      active: completedSessionCount > 0,
+      detail: "At least one Reppy session has been confirmed or completed.",
+    },
+    {
+      label: "Verified reviews",
+      active: summary.verifiedCount > 0,
+      detail: "At least one published review is tied to a Reppy session.",
+    },
+  ];
+  const enoughData = summary.reviewCount >= 3 || requestCount >= 3;
+  const activeBadgeRatio = badges.filter((badge) => badge.active).length / badges.length;
+  const ratingRatio = summary.averageRating ? summary.averageRating / 5 : 0;
+  const score = enoughData ? Math.round(activeBadgeRatio * 70 + ratingRatio * 30) : null;
+
+  return {
+    label: score === null ? "Reliability score building" : `${score}/100 reliability`,
+    score,
+    badges,
+  };
+}
+
+async function getCoachPublicReviewExtras(coach: Coach, availabilityBlocks: CoachAvailabilityBlock[]) {
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return {
+      reviews: [],
+      reviewSummary: emptyReviewSummary(),
+      reliability: calculateCoachReliability({
+        coach,
+        availabilityBlocks,
+        summary: emptyReviewSummary(),
+        requestCount: 0,
+        respondedCount: 0,
+        completedSessionCount: 0,
+      }),
+    };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("coach_reviews")
+    .select("*")
+    .eq("coach_id", coach.id)
+    .in("status", ["published", "approved"])
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const reviews =
+    error && (isMissingTableError(error) || isMissingColumnError(error))
+      ? []
+      : ((data ?? []) as Array<Partial<CoachReview> & Record<string, unknown>>).map(normalizeReview);
+  const summary = summarizeReviews(reviews);
+  const requestStats = await getCoachRequestStats(coach.id);
+
+  return {
+    reviews,
+    reviewSummary: summary,
+    reliability: calculateCoachReliability({
+      coach,
+      availabilityBlocks,
+      summary,
+      ...requestStats,
+    }),
+  };
+}
+
+export async function getCoachReviewDashboard(coachId: string) {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return { reviews: [], invites: [], summary: emptyReviewSummary() };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const [{ data: reviewRows, error: reviewError }, { data: inviteRows, error: inviteError }] = await Promise.all([
+    supabase.from("coach_reviews").select("*").eq("coach_id", coachId).order("created_at", { ascending: false }),
+    supabase.from("coach_review_invites").select("*").eq("coach_id", coachId).order("created_at", { ascending: false }),
+  ]);
+
+  if (reviewError && !(isMissingTableError(reviewError) || isMissingColumnError(reviewError))) {
+    throw reviewError;
+  }
+
+  if (inviteError && !(isMissingTableError(inviteError) || isMissingColumnError(inviteError))) {
+    throw inviteError;
+  }
+
+  const reviews =
+    reviewError && (isMissingTableError(reviewError) || isMissingColumnError(reviewError))
+      ? []
+      : ((reviewRows ?? []) as Array<Partial<CoachReview> & Record<string, unknown>>).map(normalizeReview);
+
+  return {
+    reviews,
+    invites:
+      inviteError && (isMissingTableError(inviteError) || isMissingColumnError(inviteError))
+        ? []
+        : ((inviteRows ?? []) as CoachReviewInvite[]),
+    summary: summarizeReviews(reviews),
+  };
+}
+
+export async function getReviewInviteByToken(token: string) {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return null;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("coach_review_invites")
+    .select("*")
+    .eq("invite_token", token)
+    .maybeSingle<CoachReviewInvite>();
+
+  if (error) {
+    if (isMissingTableError(error) || isMissingColumnError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const { data: coach } = await supabase.from("coaches").select(publicCoachSelect).eq("id", data.coach_id).maybeSingle<Coach>();
+  return coach ? { invite: data, coach } : null;
+}
+
+export async function getVerifiedSessionReviewContext(requestId: string, userId: string) {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return null;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: request, error } = await supabase
+    .from("training_requests")
+    .select("*")
+    .eq("id", requestId)
+    .or(`requester_user_id.eq.${userId},guardian_user_id.eq.${userId}`)
+    .maybeSingle<TrainingRequest>();
+
+  if (error || !request || !["paid_confirmed", "completed"].includes(request.status) || !request.coach_id) {
+    if (error) {
+      throw error;
+    }
+
+    return null;
+  }
+
+  const { data: coach } = await supabase.from("coaches").select(publicCoachSelect).eq("id", request.coach_id).maybeSingle<Coach>();
+  return coach ? { request, coach } : null;
+}
+
+export async function getAdminCoachReviews() {
+  noStore();
+  if (!hasSupabaseConfig() || !hasSupabaseAdminConfig()) {
+    return { reviews: [], coaches: new Map<string, Coach>() };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const [{ data: reviews, error: reviewsError }, { data: coaches, error: coachesError }] = await Promise.all([
+    supabase.from("coach_reviews").select("*").order("created_at", { ascending: false }),
+    supabase.from("coaches").select("*"),
+  ]);
+
+  if (reviewsError && !(isMissingTableError(reviewsError) || isMissingColumnError(reviewsError))) {
+    throw reviewsError;
+  }
+
+  if (coachesError) {
+    throw coachesError;
+  }
+
+  return {
+    reviews:
+      reviewsError && (isMissingTableError(reviewsError) || isMissingColumnError(reviewsError))
+        ? []
+        : ((reviews ?? []) as Array<Partial<CoachReview> & Record<string, unknown>>).map(normalizeReview),
+    coaches: new Map(((coaches ?? []) as Coach[]).map((coach) => [coach.id, coach])),
   };
 }
 

@@ -6,6 +6,7 @@ import { useState } from "react";
 type AccountRegisterFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   next: string;
+  mode?: "full" | "review";
   defaultValues?: {
     player_name?: string;
     guardian_name?: string;
@@ -16,9 +17,10 @@ type AccountRegisterFormProps = {
   };
 };
 
-export function AccountRegisterForm({ action, next, defaultValues }: AccountRegisterFormProps) {
+export function AccountRegisterForm({ action, next, mode = "full", defaultValues }: AccountRegisterFormProps) {
   const [clientError, setClientError] = useState("");
   const [role, setRole] = useState(defaultValues?.role ?? "parent");
+  const isReviewMode = mode === "review";
 
   return (
     <form
@@ -33,27 +35,31 @@ export function AccountRegisterForm({ action, next, defaultValues }: AccountRegi
       className="mt-6 grid gap-4"
     >
       <input type="hidden" name="next" value={next} />
+      <input type="hidden" name="registration_mode" value={mode} />
       {clientError ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {clientError}
         </p>
       ) : null}
       <Field
-        label="Player name"
+        label={isReviewMode ? "Display name" : "Player name"}
         name="player_name"
         defaultValue={defaultValues?.player_name ?? ""}
         autoComplete="name"
         onChange={() => setClientError("")}
       />
-      <Field
-        label={role === "adult_player" ? "Parent/guardian name optional" : "Parent/guardian name"}
-        name="guardian_name"
-        defaultValue={defaultValues?.guardian_name ?? ""}
-        autoComplete="name"
-        required={role === "parent"}
-        onChange={() => setClientError("")}
-      />
-      <div>
+      {isReviewMode ? null : (
+        <Field
+          label={role === "adult_player" ? "Parent/guardian name optional" : "Parent/guardian name"}
+          name="guardian_name"
+          defaultValue={defaultValues?.guardian_name ?? ""}
+          autoComplete="name"
+          required={role === "parent"}
+          onChange={() => setClientError("")}
+        />
+      )}
+      {isReviewMode ? null : (
+        <div>
         <Field
           label="Player date of birth"
           name="player_date_of_birth"
@@ -66,6 +72,7 @@ export function AccountRegisterForm({ action, next, defaultValues }: AccountRegi
           Used to calculate the player&apos;s age for training requests. This should be the athlete&apos;s date of birth, not the parent&apos;s.
         </p>
       </div>
+      )}
       <Field
         label="Email"
         name="email"
@@ -74,15 +81,20 @@ export function AccountRegisterForm({ action, next, defaultValues }: AccountRegi
         autoComplete="email"
         onChange={() => setClientError("")}
       />
-      <Field
-        label="Mobile phone number"
-        name="phone"
-        type="tel"
-        defaultValue={defaultValues?.phone ?? ""}
-        autoComplete="tel"
-        onChange={() => setClientError("")}
-      />
-      <label className="text-sm font-medium text-slate-800">
+      {isReviewMode ? null : (
+        <Field
+          label="Mobile phone number"
+          name="phone"
+          type="tel"
+          defaultValue={defaultValues?.phone ?? ""}
+          autoComplete="tel"
+          onChange={() => setClientError("")}
+        />
+      )}
+      {isReviewMode ? (
+        <input type="hidden" name="role" value="parent" />
+      ) : (
+        <label className="text-sm font-medium text-slate-800">
         Account type
         <select
           name="role"
@@ -94,6 +106,7 @@ export function AccountRegisterForm({ action, next, defaultValues }: AccountRegi
           <option value="adult_player">Adult player</option>
         </select>
       </label>
+      )}
       <Field
         label="Password"
         name="password"

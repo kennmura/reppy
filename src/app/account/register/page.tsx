@@ -36,12 +36,15 @@ export default async function AccountRegisterPage({
     email?: string;
     phone?: string;
     role?: string;
+    mode?: string;
+    registration_mode?: string;
   }>;
 }) {
   const params = await searchParams;
   const error = params.error ? errors[params.error] : null;
   const next = params.next && params.next.startsWith("/") && !params.next.startsWith("//") ? params.next : "";
   const defaultRole = params.role === "adult_player" ? "adult_player" : "parent";
+  const mode = params.mode === "review" || params.registration_mode === "review" ? "review" : "full";
 
   return (
     <main className="bg-[#f7f8f3] py-14">
@@ -51,10 +54,12 @@ export default async function AccountRegisterPage({
             Back to site
           </Link>
           <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-950">
-            Player/Parent Account
+            {mode === "review" ? "Create Review Account" : "Player/Parent Account"}
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Save preferences, send requests, and keep coach conversations in one place.
+            {mode === "review"
+              ? "Create a lightweight account to leave an account-based coach review. Full player setup can wait until you request training."
+              : "Save preferences, send requests, and keep coach conversations in one place."}
           </p>
           {error ? (
             <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -64,6 +69,7 @@ export default async function AccountRegisterPage({
           <AccountRegisterForm
             action={registerAccount}
             next={next}
+            mode={mode}
             defaultValues={{
               player_name: params.player_name ?? params.display_name ?? "",
               guardian_name: params.guardian_name ?? "",

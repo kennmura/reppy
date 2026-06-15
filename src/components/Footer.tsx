@@ -1,17 +1,30 @@
 import Link from "next/link";
+import { isMarketplaceVisible } from "@/lib/featureFlags";
 
 export function Footer() {
+  const marketplaceVisible = isMarketplaceVisible();
+
   return (
     <footer className="border-t border-slate-200 bg-white">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-        <p>Helping athletes discover local sports coaches for private and small-group training.</p>
+        <p>
+          {marketplaceVisible
+            ? "Helping athletes discover local sports coaches for private and small-group training."
+            : "Helping athletes carry development history across teams, seasons, and training."}
+        </p>
         <div className="flex flex-wrap gap-5">
           <Link href="/" className="hover:text-slate-950">
             Home
           </Link>
-          <Link href="/coaches" className="hover:text-slate-950">
-            Find Coaches
-          </Link>
+          {marketplaceVisible ? (
+            <Link href="/coaches" className="hover:text-slate-950">
+              Find Coaches
+            </Link>
+          ) : (
+            <Link href="/account/passport" className="hover:text-slate-950">
+              Passport
+            </Link>
+          )}
           <Link href="/account/login" className="hover:text-slate-950">
             Sign In / Sign Up
           </Link>

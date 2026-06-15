@@ -46,6 +46,9 @@ ALERT_EMAIL_FROM=Reppy <notifications@yourdomain.com>
 FOUNDING_COACH_PLAN_CODE=founding_5
 PREMIUM_COACH_PLAN_CODE=premium_15
 REPPY_DISABLE_PHONE_VERIFICATION=true
+REPPY_SEASON_MODE_ENABLED=true
+REPPY_PASSPORT_ENABLED=true
+REPPY_MARKETPLACE_VISIBLE=false
 
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
@@ -135,16 +138,66 @@ Manual Stripe setup:
 ## Coach Discovery
 
 - `/coaches` filters coaches by their listed sport, optional training type, and optional location.
+- When `REPPY_MARKETPLACE_VISIBLE=false`, `/coaches` stays active but is hidden from normal navigation and homepage CTAs.
 - Location search uses saved coach latitude/longitude, or resolves known city/state/ZIP values through the server-side lookup in `src/lib/location.ts`.
 - Player/parent users can save coaches from profile pages and see saved coaches in `/account/dashboard`.
 - Coach profile service cards are selectable. A selected service is included in the training request payload and saved when the request-service migration has been applied.
 - Coaches manage day-by-day available hours in `/coach/calendar`. Saved availability appears on public profiles and powers the coach onboarding checklist.
+
+## Reppy Passport
+
+Reppy Passport is the main MVP surface while the private coaching marketplace is hidden. It supports soccer and basketball player development records that follow athletes across high school, club, and training contexts.
+
+Feature flags:
+
+```env
+REPPY_SEASON_MODE_ENABLED=true
+REPPY_PASSPORT_ENABLED=true
+REPPY_MARKETPLACE_VISIBLE=false
+```
+
+Passport routes:
+
+- `/players/[slug]` public player profile with approved public clips and public-safe fields only.
+- `/account/passport` player/parent Passport dashboard.
+- `/account/passport/edit` create a player profile.
+- `/account/passport/[playerId]` private player development Passport.
+- `/account/passport/[playerId]/edit`
+- `/account/passport/[playerId]/clips`
+- `/account/passport/[playerId]/reflections`
+- `/account/passport/[playerId]/sharing`
+- `/account/passport/[playerId]/timeline`
+- `/account/players` parent Manage athletes alias.
+- `/passport/join` and `/season/join` team-code join flow.
+- `/coach/passport`
+- `/coach/passport/teams`
+- `/coach/passport/teams/new`
+- `/coach/passport/teams/[teamId]`
+- `/coach/passport/teams/[teamId]/roster`
+- `/coach/passport/teams/[teamId]/players/[playerId]`
+- `/coach/passport/teams/[teamId]/feedback`
+- `/coach/passport/teams/[teamId]/handoff`
+- `/admin/passport`
+- `/admin/passport/reports`
+- `/admin/passport/teams`
+- `/admin/passport/players`
+
+Passport privacy rules:
+
+- DOB, emails, phone, parent details, exact location, coach feedback, handoff notes, private clips, and coach-uploaded clips are not public.
+- Minor profiles default to conservative private visibility.
+- Player-uploaded clips can be public only when the player/parent chooses public visibility.
+- Coach-uploaded clips are private by default and cannot be public.
+- MVP clip limits are enforced server-side at 4 active player-uploaded clips and 4 active coach-uploaded clips per player.
+- Coaches can write feedback only for players connected through a Passport team or approved access path.
+- Reports route to admin moderation; players/parents cannot directly delete coach feedback.
 
 ## Routes
 
 Public:
 
 - `/`
+- `/players/[slug]`
 - `/coaches`
 - `/coaches/[slug]`
 - `/account/login`
@@ -168,6 +221,14 @@ Coach Dashboard:
 - `/coach/reset-password`
 - `/coach/onboarding`
 - `/coach/dashboard`
+- `/coach/passport`
+- `/coach/passport/teams`
+- `/coach/passport/teams/new`
+- `/coach/passport/teams/[teamId]`
+- `/coach/passport/teams/[teamId]/roster`
+- `/coach/passport/teams/[teamId]/players/[playerId]`
+- `/coach/passport/teams/[teamId]/feedback`
+- `/coach/passport/teams/[teamId]/handoff`
 - `/coach/calendar`
 - `/coach/profile`
 - `/coach/profile/edit`
@@ -188,6 +249,15 @@ Player/parent dashboard:
 - `/account/reset-password`
 - `/account/onboarding`
 - `/account/dashboard`
+- `/account/passport`
+- `/account/passport/edit`
+- `/account/passport/[playerId]`
+- `/account/passport/[playerId]/edit`
+- `/account/passport/[playerId]/clips`
+- `/account/passport/[playerId]/reflections`
+- `/account/passport/[playerId]/sharing`
+- `/account/passport/[playerId]/timeline`
+- `/account/players`
 - `/account/preferences`
 - `/account/settings`
 - `/account/messages`
@@ -198,10 +268,16 @@ Player/parent dashboard:
 Shared auth:
 
 - `/auth/callback`
+- `/passport/join`
+- `/season/join`
 
 Admin:
 
 - `/admin`
+- `/admin/passport`
+- `/admin/passport/reports`
+- `/admin/passport/teams`
+- `/admin/passport/players`
 - `/admin/accounts`
 - `/admin/accounts/[userId]`
 - `/admin/coaches`

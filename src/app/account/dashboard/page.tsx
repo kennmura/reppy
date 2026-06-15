@@ -4,6 +4,7 @@ import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { accountRequestProfileFrom, isAccountRequestProfileComplete } from "@/lib/accountProfile";
 import { getAccountContextOrRedirect, getAccountPrivateDetails } from "@/lib/auth";
 import { getAccountConversations, getSavedCoachesForUser, getUserCoachingPreference } from "@/lib/data";
+import { isMarketplaceVisible } from "@/lib/featureFlags";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export default async function AccountDashboardPage() {
     getAccountPrivateDetails(user.id),
   ]);
   const savedCoaches = await getSavedCoachesForUser(user.id);
+  const marketplaceVisible = isMarketplaceVisible();
   const unreadMessages = conversations.reduce(
     (total, conversation) => total + Number(conversation.participant_unread_count ?? 0),
     0,
@@ -36,15 +38,26 @@ export default async function AccountDashboardPage() {
             Welcome, {profile.display_name}
           </h1>
           <p className="mt-3 max-w-2xl leading-7 text-slate-700">
-            Find coaches, send training requests, and continue conversations from one dashboard.
+            {marketplaceVisible
+              ? "Find coaches, send training requests, and continue conversations from one dashboard."
+              : "Manage player development profiles, team joins, feedback, and season handoffs from one dashboard."}
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/coaches"
-              className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948]"
-            >
-              Find Coaches
-            </Link>
+            {marketplaceVisible ? (
+              <Link
+                href="/coaches"
+                className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948]"
+              >
+                Find Coaches
+              </Link>
+            ) : (
+              <Link
+                href="/account/passport"
+                className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#12355b] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0d2948]"
+              >
+                Open Passport
+              </Link>
+            )}
             <Link
               href="/account/preferences"
               className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-800 hover:border-slate-500"
@@ -99,9 +112,13 @@ export default async function AccountDashboardPage() {
               </div>
             ) : (
               <EmptyState
-                text="You have not sent any training requests yet. Find a coach to get started."
-                href="/coaches"
-                label="Find Coaches"
+                text={
+                  marketplaceVisible
+                    ? "You have not sent any training requests yet. Find a coach to get started."
+                    : "Team activity and coach messages will appear here when Passport activity starts."
+                }
+                href={marketplaceVisible ? "/coaches" : "/account/passport"}
+                label={marketplaceVisible ? "Find Coaches" : "Open Passport"}
               />
             )}
           </section>
@@ -129,8 +146,8 @@ export default async function AccountDashboardPage() {
             ) : (
               <EmptyState
                 text="Your conversations will appear here after you request training."
-                href="/coaches"
-                label="Find Coaches"
+                href={marketplaceVisible ? "/coaches" : "/account/passport"}
+                label={marketplaceVisible ? "Find Coaches" : "Open Passport"}
               />
             )}
           </section>
@@ -155,9 +172,13 @@ export default async function AccountDashboardPage() {
             </div>
           ) : (
             <EmptyState
-              text="Save coaches from their profiles to compare options before you request training."
-              href="/coaches"
-              label="Find Coaches"
+              text={
+                marketplaceVisible
+                  ? "Save coaches from their profiles to compare options before you request training."
+                  : "Saved coaches will return when the private coaching marketplace is visible."
+              }
+              href={marketplaceVisible ? "/coaches" : "/account/passport"}
+              label={marketplaceVisible ? "Find Coaches" : "Open Passport"}
             />
           )}
         </section>

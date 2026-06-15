@@ -151,6 +151,25 @@ async function handleCheckoutCompleted(event: StripeEvent) {
           ? "The first session booking is confirmed."
           : "The future session payment is confirmed.",
     });
+
+    if (payment.requester_user_id && payment.training_request_id) {
+      const reviewUrl = `/reviews/session/${payment.training_request_id}`;
+      await createNotification({
+        userId: payment.requester_user_id,
+        type: "system",
+        title: "Review your coach",
+        body: "After your confirmed session, leave a verified Reppy review.",
+        relatedConversationId: payment.conversation_id,
+        actionUrl: reviewUrl,
+      }).catch(() => null);
+
+      await supabase.from("messages").insert({
+        conversation_id: payment.conversation_id,
+        sender_user_id: null,
+        sender_role: "system",
+        body: `After your confirmed session, you can leave a verified Reppy review: ${reviewUrl}`,
+      });
+    }
   }
 }
 
